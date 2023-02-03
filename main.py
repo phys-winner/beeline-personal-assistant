@@ -8,8 +8,12 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+use_white_list = len(white_list) > 0
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if use_white_list and update.effective_chat.id not in white_list:
+        return
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="I'm a bot, please talk to me!")
 
