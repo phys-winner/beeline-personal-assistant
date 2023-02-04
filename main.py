@@ -126,12 +126,13 @@ async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     def format_accumulator(accumulator):
         result = ''
-        if 'soc' in accumulator \
+        is_inet_unlim = 'soc' in accumulator \
                 and accumulator['soc'] == 'SBL4P2_3' \
-                and accumulator['unit'] == 'KBYTE':
-            result += f'♾️ безлимит'
+                and accumulator['unit'] == 'KBYTE'
+        if is_inet_unlim:
+            result = f'♾️ безлимит'
         elif 'rest' in accumulator:
-            result += format_unit_count(accumulator)
+            result = format_unit_count(accumulator)
 
         if accumulator['unit'] == 'KBYTE':
             result = f'🌎 Интернет: {result}\n'
@@ -142,7 +143,7 @@ async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             result = f'🔢 Осталось: {result}\n'
 
-        if 'dateResetPacket' in accumulator:
+        if 'dateResetPacket' in accumulator and not is_inet_unlim:
             date_reset = str_to_datetime(accumulator['dateResetPacket'])
             date_str = str(date_reset.strftime('%d %B %Y'))
             result += f'📅 Дата сброса пакета: {date_str.lower()} года\n'

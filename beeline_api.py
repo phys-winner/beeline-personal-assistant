@@ -1,5 +1,6 @@
 import requests
 import json
+from ratelimiter import RateLimiter
 from beeline_api_errors import *
 
 
@@ -49,6 +50,7 @@ class BeelineAPI:
     def __init__(self):
         self.headers = {'User-Agent': USER_AGENT}
 
+    @RateLimiter(max_calls=3, period=1)
     def __get_request__(self, url, params=None, beeline_number=None):
         cookies = {}
         if beeline_number is not None and url != AUTH:
