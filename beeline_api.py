@@ -29,10 +29,11 @@ class BeelineUser:
 class BeelineNumber:
     """Класс с информацией о номере телефона"""
 
-    def __init__(self, ctn, password, token):
+    def __init__(self, ctn, password, token, name):
         self.ctn = ctn
         self.password = password
         self.token = token
+        self.name = name
 
     def __repr__(self):
         return f'BeelineNumber: ctn={self.ctn},password={self.password},' \
@@ -78,7 +79,7 @@ class BeelineAPI:
     def info_serviceList(self, number: BeelineNumber):
         # hiddenService - Индикатор отображения данных по скрытым услугам.
         # Значение по умолчанию - false, скрытые услуги не возвращаются
-        params = {'hiddenService': 'true', 'ctn': number.ctn}
+        params = {'ctn': number.ctn}
         r = self.__get_request__(url=SERVICELIST, params=params, number=number)
         if not r.ok:
             return 'ERROR'

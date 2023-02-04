@@ -27,6 +27,9 @@ AUTHORIZE, TEST = range(2)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'beeline_user' in context.user_data:
+        await get_services(update, context)
+        return
     user = update.message.from_user
     logger.info("start: %s: %s", user.first_name, update.message.text)
     if use_white_list and update.effective_chat.id not in white_list:
@@ -47,6 +50,7 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ctn, password = re.findall(r'(\d{10}) (.+)$', update.message.text)[0]
     if 'beeline_user' in context.user_data:
         await update.message.reply_text("Вы уже авторизованы!")
+        await get_services(update, context)
         return
 
     logger.info("login: %s", update.message.text)
@@ -57,11 +61,12 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return AUTHORIZE
 
     token = response['token']
-    new_number = BeelineNumber(ctn, password, token)
+    new_number = BeelineNumber(ctn, password, token, "Основной")
     if 'beeline_user' not in context.user_data:
         new_user = BeelineUser(new_number)
         context.user_data['beeline_user'] = new_user
-    await update.message.reply_text("Вы успешно авторизовались: " + token)
+    #await update.message.reply_text("Вы успешно авторизовались: " + token)
+    await get_services(update, context)
 
     return ConversationHandler.END
 
@@ -78,6 +83,7 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     cur_number = context.user_data['beeline_user'].current_number
     response = beelineAPI.info_serviceList(context.user_data['beeline_user'].numbers[cur_number])
+    logger.info("services: %s: %s", update.message.from_user.first_name, response)
 
     def sort_by_name(service):
         return service['entityName']
@@ -93,6 +99,9 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         result += f' {service["entityName"].replace("  ", " ")}'
         if service['expDate'] is not None:
             result += f' (действует до {service["expDate"]})'
+        result += f'\n'
+        if service["entityDesc"] is not None:
+            result += service["entityDesc"] + f'\n'
         return result + f'\n'
 
     result = 'Видимые услуги:\n'
