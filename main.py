@@ -1,5 +1,6 @@
 import logging
 import re
+from beeline_api_errors import *
 
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
@@ -54,18 +55,19 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return
 
     logger.info("login: %s", update.message.text)
-    response = beelineAPI.obtain_token(ctn, password)
-    if response == 'ERROR' or response['meta']['status'] != 'OK':
-        await update.message.reply_text("Неправильный номер телефона "
-                                        "или пароль, попробуйте ещё раз:")
+    try:
+        token = beelineAPI.obtain_token(ctn, password)
+    except InvalidResponse as e:
+        await update.message.reply_text("Произошла проблема при авторизации, попробуйте ещё раз.\n\n" + e.value)
+        return AUTHORIZE
+    except StatusNotOK as e:
+        await update.message.reply_text("Неверный номер телефона или пароль, попробуйте ещё раз.")
         return AUTHORIZE
 
-    token = response['token']
     new_number = BeelineNumber(ctn, password, token, "Основной")
     if 'beeline_user' not in context.user_data:
         new_user = BeelineUser(new_number)
         context.user_data['beeline_user'] = new_user
-    #await update.message.reply_text("Вы успешно авторизовались: " + token)
     await get_services(update, context)
 
     return ConversationHandler.END
@@ -81,9 +83,12 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if 'beeline_user' not in context.user_data:
         return
 
-    cur_number = context.user_data['beeline_user'].current_number
-    response = beelineAPI.info_serviceList(context.user_data['beeline_user'].numbers[cur_number])
+    index_number = context.user_data['beeline_user'].current_number
+
+    response, new_number = beelineAPI.info_serviceList(context.user_data['beeline_user'].numbers[index_number])
     logger.info("services: %s: %s", update.message.from_user.first_name, response)
+
+    context.user_data['beeline_user'].numbers[index_number] = new_number
 
     def sort_by_name(service):
         return service['entityName']
