@@ -1,7 +1,7 @@
 import logging
 import re
 
-from beeline_api import BeelineAPI
+from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
 from telegram import Update
 from telegram.constants import ParseMode
@@ -12,6 +12,7 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     MessageHandler,
+    PicklePersistence,
     filters,
 )
 
@@ -51,15 +52,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     cnt, password = re.findall(r'(\d{10}) (.+)$', update.message.text)[0]
+    if 'beeline_user' in context.user_data:
+        await update.message.reply_text("Вы уже авторизованы!")
+        return
 
     logger.info("login: %s", update.message.text)
-    responce = beelineAPI.obtain_token(cnt, password)
-    if responce == 'ERROR' or responce['meta']['status'] != 'OK':
+    response = beelineAPI.obtain_token(cnt, password)
+    if response == 'ERROR' or response['meta']['status'] != 'OK':
         await update.message.reply_text("Неправильный номер телефона "
                                         "или пароль, попробуйте ещё раз:")
         return AUTHORIZE
 
-    await update.message.reply_text("Вы успешно авторизовались: " + responce['token'])
+    token = response['token']
+    new_number = BeelineNumber(cnt, password, token)
+    if 'beeline_user' not in context.user_data:
+        new_user = BeelineUser(new_number)
+        context.user_data['beeline_user'] = new_user
+    await update.message.reply_text("Вы успешно авторизовались: " + token)
 
     return ConversationHandler.END
 
@@ -69,8 +78,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     return ConversationHandler.END
 
+
+async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        repr(context.user_data['beeline_user'])
+    )
+
 if __name__ == '__main__':
-    application = ApplicationBuilder().token(tg_bot_token).build()
+    persistence = PicklePersistence(filepath="beeline_data.pickle", update_interval=5)
+    application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -80,7 +96,13 @@ if __name__ == '__main__':
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        name="main_conversation",
+        persistent=True
     )
 
     application.add_handler(conv_handler)
+
+    show_data_handler = CommandHandler("show_data", show_data)
+    application.add_handler(show_data_handler)
+
     application.run_polling()

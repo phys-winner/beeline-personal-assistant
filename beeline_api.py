@@ -13,6 +13,31 @@ API_1_0 = BASE + "api/1.0/"
 AUTH = API_1_0 + 'auth'
 
 
+class BeelineUser:
+    """Класс с информацией об абоненте"""
+
+    def __init__(self, number):
+        self.current_number = 0
+        self.numbers = [number]
+
+    def __repr__(self):
+        return f'BeelineUser: current_index={self.current_number},' \
+               f'numbers=[{";".join([repr(num) for num in self.numbers])}]'
+
+
+class BeelineNumber:
+    """Класс с информацией о номере телефона"""
+
+    def __init__(self, cnt, password, token):
+        self.cnt = cnt
+        self.password = password
+        self.token = token
+
+    def __repr__(self):
+        return f'BeelineNumber: cnt={self.cnt},password={self.password},' \
+               f'token={self.token}'
+
+
 class BeelineAPI:
     """Класс неофициального API Beeline.ru"""
 
