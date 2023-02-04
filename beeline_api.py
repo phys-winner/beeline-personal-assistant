@@ -65,7 +65,7 @@ class BeelineAPI:
 
         response = json.loads(r.text)
         if response['meta']['status'] == 'ERROR' and \
-                response['meta']['message'] == 'TOKEN_EXPIRED' \
+                'TOKEN_' in response['meta']['message'] \
                 and url != AUTH:
             # слетел токен, актуализируем его
             beeline_number.token = self.obtain_token(beeline_number.ctn,
