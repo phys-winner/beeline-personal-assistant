@@ -2,6 +2,7 @@ import logging
 import re
 import locale
 from beeline_api_errors import *
+from keyboards import *
 from utils import *
 
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
@@ -11,6 +12,7 @@ from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -30,9 +32,15 @@ use_white_list = len(white_list) > 0
 AUTHORIZE, TEST = range(2)
 
 
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('Вы находитесь в главном меню.\n\n'
+                                    'Выберите необходимый раздел:',
+                                    reply_markup=main_menu_keyboard())
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' in context.user_data:
-        await get_services(update, context)
+        await show_main_menu(update, context)
         return
     user = update.message.from_user
     logger.info("start: %s: %s", user.first_name, update.message.text)
@@ -256,13 +264,13 @@ if __name__ == '__main__':
 
     application.add_handler(conv_handler)
 
-    show_data_handler = CommandHandler("show_data", show_data)
+    show_data_handler = MessageHandler(filters.Regex('^Хранящиеся данные$'), show_data)
     application.add_handler(show_data_handler)
 
-    get_services_handler = CommandHandler("get_services", get_services)
+    get_services_handler = MessageHandler(filters.Regex('^Услуги$'), get_services)
     application.add_handler(get_services_handler)
 
-    get_accumulators_handler = CommandHandler("get_accumulators", get_accumulators)
+    get_accumulators_handler = MessageHandler(filters.Regex('^Счётчики$'), get_accumulators)
     application.add_handler(get_accumulators_handler)
 
     application.run_polling()

@@ -16,6 +16,7 @@ AUTH = API_1_0 + 'auth'
 INFO = API_1_0 + 'info/'
 SERVICELIST = INFO + 'serviceList'
 ACCUMULATORS = INFO + 'accumulators'
+PRICEPLAN = INFO + 'pricePlan'
 
 
 class BeelineUser:
@@ -107,6 +108,15 @@ class BeelineAPI:
         # Значение по умолчанию - false, скрытые услуги не возвращаются
         params = {'ctn': number.ctn}
         response, number = self.__get_request__(url=ACCUMULATORS, params=params,
+                                                beeline_number=number)
+
+        return response, number
+
+    def info_pricePlan(self, number: BeelineNumber):
+        # hiddenService - Индикатор отображения данных по скрытым услугам.
+        # Значение по умолчанию - false, скрытые услуги не возвращаются
+        params = {'ctn': number.ctn}
+        response, number = self.__get_request__(url=PRICEPLAN, params=params,
                                                 beeline_number=number)
 
         return response, number
