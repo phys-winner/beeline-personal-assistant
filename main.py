@@ -252,14 +252,15 @@ async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     result = f"""Название: {price_plan['entityName']}
 {price_plan['entityDesc']}
 
-💵 Стоимость: {int(price_plan['rcRate'])} {price_plan['rcRatePeriodText']}
 """
+    if 'rcRatePeriodText' in price_plan and int(price_plan['rcRate']) > 0:
+        result += f"💵 Абонентская плата: {int(price_plan['rcRate'])} {price_plan['rcRatePeriodText']}\n"
+    else:
+        result += f"🤑 Без абонентской платы\n"
     if price_plan['expDate'] is not None:
         exp_date = str_to_datetime(price_plan['expDate'])
         date_str = str(exp_date.strftime('%d %B %Y'))
         result += f'📅 Действует до {date_str.lower()} года)\n'
-    if price_plan['archiveInd']:
-        result += f'📁 Архивный тариф'
 
     await update.message.reply_text(
         result
