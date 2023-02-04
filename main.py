@@ -105,22 +105,22 @@ async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
             size = accumulator['size']
         if unit == 'KBYTE':
             result = format_bytes(rest, unit)
-            if size is not None and size > rest:
+            if size is not None and size >= rest:
                 result += ' из ' + format_bytes(size, unit)
             return result
         elif unit == 'SECONDS':
             result = str(rest // 60)
-            if size is not None and size > rest:
+            if size is not None and size >= rest:
                 result += ' из ' + str(size // 60)
             return result + " минут"
         elif unit == 'SMS':
             result = str(rest)
-            if size is not None and size > rest:
+            if size is not None and size >= rest:
                 result += ' из ' + str(rest)
             return result + " смс"
 
         result = str(rest)
-        if size is not None and size > rest:
+        if size is not None and size >= rest:
             result += ' из ' + str(rest)
         return result
 
@@ -198,7 +198,7 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if service['expDate'] is not None:
             exp_date = str_to_datetime(service['expDate'])
             date_str = str(exp_date.strftime('%d %B %Y'))
-            result += f' (действует до {date_str.lower()} года)'
+            result += f' (📅 действует до {date_str.lower()} года)'
         if service["entityDesc"] is not None \
                 and service["entityDesc"] != service["entityName"]:
             result += f'\n{service["entityDesc"].replace("  ", " ")}\n'
