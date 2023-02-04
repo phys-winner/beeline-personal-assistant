@@ -1,6 +1,8 @@
 import logging
 import re
+import locale
 from beeline_api_errors import *
+from utils import *
 
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
@@ -21,6 +23,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+locale.setlocale(locale.LC_ALL, 'rus')
 
 beelineAPI = BeelineAPI()
 use_white_list = len(white_list) > 0
@@ -79,16 +82,106 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+def call_func(context: ContextTypes.DEFAULT_TYPE, func):
+    index_number = context.user_data['beeline_user'].current_number
+    response, new_number = func(context.user_data['beeline_user'].numbers[index_number])
+
+    context.user_data['beeline_user'].numbers[index_number] = new_number
+    return response
+
+
+async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'beeline_user' not in context.user_data:
+        return
+
+    response = call_func(context, beelineAPI.info_accumulators)
+    logger.info("accumulators: %s: %s", update.message.from_user.first_name, response)
+
+    def format_unit_count(accumulator):
+        unit = accumulator['unit']
+        rest = accumulator['rest']
+        size = None
+        if 'size' in accumulator:
+            size = accumulator['size']
+        if unit == 'KBYTE':
+            result = format_bytes(rest, unit)
+            if size is not None and size > rest:
+                result += ' из ' + format_bytes(size, unit)
+            return result
+        elif unit == 'SECONDS':
+            result = str(rest // 60)
+            if size is not None and size > rest:
+                result += ' из ' + str(size // 60)
+            return result + " минут"
+        elif unit == 'SMS':
+            result = str(rest)
+            if size is not None and size > rest:
+                result += ' из ' + str(rest)
+            return result + " смс"
+
+        result = str(rest)
+        if size is not None and size > rest:
+            result += ' из ' + str(rest)
+        return result
+
+    def format_accumulator(accumulator):
+        result = ''
+        if 'soc' in accumulator \
+                and accumulator['soc'] == 'SBL4P2_3' \
+                and accumulator['unit'] == 'KBYTE':
+            result += f'♾️ безлимит'
+        elif 'rest' in accumulator:
+            result += format_unit_count(accumulator)
+
+        if accumulator['unit'] == 'KBYTE':
+            result = f'🌎 Интернет: {result}\n'
+        elif accumulator['unit'] == 'SECONDS':
+            result = f'📞 Минуты: {result}\n'
+        elif accumulator['unit'] == 'SMS':
+            result = f'✉️ SMS: {result}\n'
+        else:
+            result = f'🔢 Осталось: {result}\n'
+
+        if 'dateResetPacket' in accumulator:
+            date_reset = str_to_datetime(accumulator['dateResetPacket'])
+            date_str = str(date_reset.strftime('%d %B %Y'))
+            result += f'📅 Дата сброса пакета: {date_str.lower()} года\n'
+        if 'isSpeedDown' in accumulator and accumulator['isSpeedDown']:
+            result += '📉 - счётчик имеет флаг уменьшенной скорости\n'
+        if 'isSpeedUp' in accumulator and accumulator['isSpeedUp']:
+            result += '📈 - счётчик имеет флаг повышенной скорости\n'
+        if 'sdbShare' in accumulator and accumulator['sdbShare']:
+            result += '👪 '
+        #result += f'Источник: {accumulator["socName"]}\n'
+        result += f'Действует: {accumulator["accName"]}'
+
+        return result + f'\n\n'
+
+    # пропускаем 'Условия использования интернета в международном роуминге'
+    accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
+
+    if len(accumulators) == 0:
+        result = 'У вас нет счётчиков для отображения'
+    else:
+        result = 'Список счётчиков:\n'
+        for accumulator in accumulators:
+            if 'sdbShare' in accumulator and accumulator['sdbShare']:
+                result = 'Обозначение: 👪 - используется в семье\n\n' + result
+                break
+        for accumulator in accumulators:
+            result += format_accumulator(accumulator)
+
+    await update.message.reply_text(
+        result
+    )
+
+
 async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
 
-    index_number = context.user_data['beeline_user'].current_number
-
-    response, new_number = beelineAPI.info_serviceList(context.user_data['beeline_user'].numbers[index_number])
+    response = call_func(context, beelineAPI.info_serviceList)
     logger.info("services: %s: %s", update.message.from_user.first_name, response)
-
-    context.user_data['beeline_user'].numbers[index_number] = new_number
 
     def sort_by_name(service):
         return service['entityName']
@@ -103,19 +196,36 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             result += '🔴'
         result += f' {service["entityName"].replace("  ", " ")}'
         if service['expDate'] is not None:
-            result += f' (действует до {service["expDate"]})'
-        result += f'\n'
-        if service["entityDesc"] is not None:
-            result += service["entityDesc"] + f'\n'
+            exp_date = str_to_datetime(service['expDate'])
+            date_str = str(exp_date.strftime('%d %B %Y'))
+            result += f' (действует до {date_str.lower()} года)'
+        if service["entityDesc"] is not None \
+                and service["entityDesc"] != service["entityName"]:
+            result += f'\n{service["entityDesc"].replace("  ", " ")}\n'
         return result + f'\n'
 
-    result = 'Видимые услуги:\n'
-    for service in [n for n in services if n['viewInd'] == 'Y']:
-        result += format_service_line(service)
+    visible_services = [n for n in services if n['viewInd'] == 'Y']
+    hidden_services = [n for n in services if n['viewInd'] != 'Y']
 
-    result += '\nСкрытые услуги:\n'
-    for service in [n for n in services if n['viewInd'] != 'Y']:
-        result += format_service_line(service)
+    if len(visible_services) == 0 and len(hidden_services) == 0:
+        result = 'У вас нет подключённых услуг.'
+    else:
+        result = 'Обозначения:' \
+                 '\n🟢 - услугу можно отключить самостоятельно' \
+                 '\n🔴 - услугу нельзя отключить самостоятельно\n\n'
+        if len(visible_services) == 0:
+            result += 'У вас отсутствуют видимые услуги.\n'
+        else:
+            result += '👀👀 Видимые услуги: 👀👀\n'
+            for service in visible_services:
+                result += format_service_line(service)
+
+        if len(hidden_services) == 0:
+            result += '\nУ вас отсутствуют скрытые услуги.'
+        else:
+            result += '\n👻👻 Скрытые услуги: 👻👻\n'
+            for service in hidden_services:
+                result += format_service_line(service)
 
     await update.message.reply_text(
         result
@@ -150,5 +260,8 @@ if __name__ == '__main__':
 
     get_services_handler = CommandHandler("get_services", get_services)
     application.add_handler(get_services_handler)
+
+    get_accumulators_handler = CommandHandler("get_accumulators", get_accumulators)
+    application.add_handler(get_accumulators_handler)
 
     application.run_polling()
