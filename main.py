@@ -103,7 +103,7 @@ async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     response = call_func(context, beelineAPI.info_accumulators)
-    logger.info("accumulators: %s: %s", update.message.from_user.first_name, response)
+    logger.info("get_accumulators: %s: %s", update.message.from_user.first_name, response)
 
     def format_unit_count(accumulator):
         unit = accumulator['unit']
@@ -190,7 +190,7 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     response = call_func(context, beelineAPI.info_serviceList)
-    logger.info("services: %s: %s", update.message.from_user.first_name, response)
+    logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
 
     def sort_by_name(service):
         return service['entityName']
@@ -241,6 +241,31 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if 'beeline_user' not in context.user_data:
+        return
+
+    response = call_func(context, beelineAPI.info_pricePlan)
+    logger.info("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
+
+    price_plan = response['pricePlanInfo']
+    result = f"""Название: {price_plan['entityName']}
+{price_plan['entityDesc']}
+
+💵 Стоимость: {int(price_plan['rcRate'])} {price_plan['rcRatePeriodText']}
+"""
+    if price_plan['expDate'] is not None:
+        exp_date = str_to_datetime(price_plan['expDate'])
+        date_str = str(exp_date.strftime('%d %B %Y'))
+        result += f'📅 Действует до {date_str.lower()} года)\n'
+    if price_plan['archiveInd']:
+        result += f'📁 Архивный тариф'
+
+    await update.message.reply_text(
+        result
+    )
+
+
 async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         repr(context.user_data['beeline_user'])
@@ -264,13 +289,9 @@ if __name__ == '__main__':
 
     application.add_handler(conv_handler)
 
-    show_data_handler = MessageHandler(filters.Regex('^Хранящиеся данные$'), show_data)
-    application.add_handler(show_data_handler)
-
-    get_services_handler = MessageHandler(filters.Regex('^Услуги$'), get_services)
-    application.add_handler(get_services_handler)
-
-    get_accumulators_handler = MessageHandler(filters.Regex('^Счётчики$'), get_accumulators)
-    application.add_handler(get_accumulators_handler)
+    application.add_handler(MessageHandler(filters.Regex('^Хранящиеся данные$'), show_data))
+    application.add_handler(MessageHandler(filters.Regex('^Услуги$'), get_services))
+    application.add_handler(MessageHandler(filters.Regex('^Тариф$'), get_pricePlan))
+    application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
 
     application.run_polling()
