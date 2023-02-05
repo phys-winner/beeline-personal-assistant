@@ -7,7 +7,7 @@ from utils import *
 
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
-from telegram import Update
+from telegram import Update, ReplyKeyboardRemove
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -38,6 +38,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     reply_markup=main_menu_keyboard())
 
 
+async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if 'beeline_user' in context.user_data:
+        del context.user_data['beeline_user']
+    return await start(update, context)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' in context.user_data:
         await show_main_menu(update, context)
@@ -53,19 +59,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Чтобы начать его использовать, пришлите мне  \n"
         "📱*номер телефона* и  🔒*пароль* через пробел\.",
         parse_mode=ParseMode.MARKDOWN_V2,
-        reply_markup=ReplyKeyboardMarkup([])
+        reply_markup=ReplyKeyboardRemove()
     )
 
     return AUTHORIZE
 
 
 async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    ctn, password = re.findall(r'(\d{10}) (.+)$', update.message.text)[0]
     if 'beeline_user' in context.user_data:
-        await update.message.reply_text("Вы уже авторизованы!")
-        await get_services(update, context)
+        await show_main_menu(update, context)
         return
 
+    ctn, password = re.findall(r'(\d{10}) (.+)$', update.message.text)[0]
     logger.info("login: %s", update.message.text)
     try:
         token = beelineAPI.obtain_token(ctn, password)
@@ -103,6 +108,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' not in context.user_data:
         return
 
+    wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_prepaidBalance)
     logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
     billing_date_str = ''
@@ -192,15 +198,14 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for accumulator in accumulators:
         result += format_accumulator(accumulator)
 
-    await update.message.reply_text(
-        result
-    )
+    await wait_msg.edit_text(result)
 
 
 async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
 
+    wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
     logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
 
@@ -254,9 +259,7 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             for service in hidden_services:
                 result += format_service_line(service)
 
-    await update.message.reply_text(
-        result
-    )
+    await wait_msg.edit_text(result)
 
 
 async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -264,6 +267,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     # услуги - наличие 'плохих' и платных, совет по подключению полезных
+    wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
     logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
     result = ''
@@ -323,7 +327,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         result += '❌️ Обнаружены подписки:\n'
         for subscription in subscriptions:
-            result += subscription + '\n'
+            result += subscription['name'] + '\n'
 
     # счётчики - наличие флага замедления
     response = call_func(context, beelineAPI.info_accumulators)
@@ -341,16 +345,14 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not is_slowed:
         result += '✅️ Замедленные счётчики не найдены!\n'
 
-    await update.message.reply_text(
-        result,
-        parse_mode=ParseMode.HTML
-    )
+    await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
 
 
 async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
 
+    wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_pricePlan)
     logger.info("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
 
@@ -368,9 +370,7 @@ async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         date_str = str(exp_date.strftime('%d %B %Y'))
         result += f'📅 Действует до {date_str.lower()} года)\n'
 
-    await update.message.reply_text(
-        result
-    )
+    await wait_msg.edit_text(result)
 
 
 async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -383,7 +383,7 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("start", start), CommandHandler("restart", restart)],
         states={
             AUTHORIZE: [MessageHandler(
                 filters.Regex(r'(\d{10}) (.+)$'), authorize)
@@ -396,12 +396,9 @@ if __name__ == '__main__':
 
     application.add_handler(conv_handler)
 
-    #application.add_handler(MessageHandler(filters.Regex('Хранящиеся данные$'), show_data))
     application.add_handler(MessageHandler(filters.Regex('📱 Основная информация'), show_info))
     application.add_handler(MessageHandler(filters.Regex('✅ Проверить мой номер'), check_number))
     application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_pricePlan))
     application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
-
-    #application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
 
     application.run_polling()

@@ -13,6 +13,8 @@ GOOD_SERVICES = {
 'CPA_SAS': {'entityName': 'Отдельный лицевой счёт для оплаты услуг провайдеров (платные подписки не будут тратить денег)', 'how_to': 'https://beeline.ru/customers/products/mobile/services/cutdetails/CPA_SAS/'}
 }
 
+PLEASE_WAIT_MSG = '⌛ Пожалуйста, подождите...'
+
 
 def format_bytes(size, unit):
     # 2**10 = 1024
