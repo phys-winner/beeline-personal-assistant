@@ -18,6 +18,8 @@ SERVICELIST = INFO + 'serviceList'
 ACCUMULATORS = INFO + 'accumulators'
 PRICEPLAN = INFO + 'pricePlan'
 SUBSCRIPTIONS = INFO + 'subscriptions'
+PROMISED_BALANCE = INFO + 'availablePromisedPayment'
+PREPAID_BALANCE = INFO + 'prepaidBalance'
 
 
 class BeelineUser:
@@ -57,6 +59,10 @@ class BeelineAPI:
         cookies = {}
         if beeline_number is not None and url != AUTH:
             cookies['token'] = beeline_number.token
+            if params is None:
+                params = {'ctn': beeline_number.ctn}
+            else:
+                params['ctn'] = beeline_number.ctn
         r = requests.get(url,
                             params=params,
                             cookies=cookies,
@@ -98,37 +104,25 @@ class BeelineAPI:
     def info_serviceList(self, number: BeelineNumber):
         # hiddenService - Индикатор отображения данных по скрытым услугам.
         # Значение по умолчанию - false, скрытые услуги не возвращаются
-        params = {'ctn': number.ctn}
+        params = {'hiddenService': 'true'}
         response, number = self.__get_request__(url=SERVICELIST, params=params,
                                                 beeline_number=number)
 
         return response, number
 
     def info_accumulators(self, number: BeelineNumber):
-        # hiddenService - Индикатор отображения данных по скрытым услугам.
-        # Значение по умолчанию - false, скрытые услуги не возвращаются
-        params = {'ctn': number.ctn}
-        response, number = self.__get_request__(url=ACCUMULATORS, params=params,
-                                                beeline_number=number)
-
-        return response, number
+        return self.__get_request__(url=ACCUMULATORS, beeline_number=number)
 
     def info_pricePlan(self, number: BeelineNumber):
-        # hiddenService - Индикатор отображения данных по скрытым услугам.
-        # Значение по умолчанию - false, скрытые услуги не возвращаются
-        params = {'ctn': number.ctn}
-        response, number = self.__get_request__(url=PRICEPLAN, params=params,
-                                                beeline_number=number)
-
-        return response, number
+        return self.__get_request__(url=PRICEPLAN, beeline_number=number)
 
     def info_subscriptions(self, number: BeelineNumber):
-        # hiddenService - Индикатор отображения данных по скрытым услугам.
-        # Значение по умолчанию - false, скрытые услуги не возвращаются
-        params = {'ctn': number.ctn}
-        response, number = self.__get_request__(url=SUBSCRIPTIONS, params=params,
-                                                beeline_number=number)
+        return self.__get_request__(url=SUBSCRIPTIONS, beeline_number=number)
 
-        return response, number
+    def info_availablePromisedPayment(self, number: BeelineNumber):
+        return self.__get_request__(url=PROMISED_BALANCE, beeline_number=number)
+
+    def info_prepaidBalance(self, number: BeelineNumber):
+        return self.__get_request__(url=PREPAID_BALANCE, beeline_number=number)
 
 

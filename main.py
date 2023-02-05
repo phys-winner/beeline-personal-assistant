@@ -52,7 +52,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         "Чтобы начать его использовать, пришлите мне  \n"
         "📱*номер телефона* и  🔒*пароль* через пробел\.",
-        parse_mode=ParseMode.MARKDOWN_V2
+        parse_mode=ParseMode.MARKDOWN_V2,
+        reply_markup=ReplyKeyboardMarkup([])
     )
 
     return AUTHORIZE
@@ -79,7 +80,7 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if 'beeline_user' not in context.user_data:
         new_user = BeelineUser(new_number)
         context.user_data['beeline_user'] = new_user
-    await get_services(update, context)
+    await show_main_menu(update, context)
 
     return ConversationHandler.END
 
@@ -102,8 +103,24 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' not in context.user_data:
         return
 
+    response = call_func(context, beelineAPI.info_prepaidBalance)
+    logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
+    billing_date_str = ''
+    if response['balance'] > 0:
+        result = f'💵 Текущий баланс: {"{0:.2f}".format(response["balance"]).rstrip("0").rstrip(".")} рублей\n'
+        if 'nextBillingDate' in response \
+                and response['nextBillingDate'] is not None:
+            date_reset = str_to_datetime(response["nextBillingDate"], "%Y-%m-%d")
+            billing_date_str = str(date_reset.strftime('%d %B %Y'))
+            result += f'Дата следующего списания: {billing_date_str.lower()} года\n'
+        result += '\n'
+    else:
+        response = call_func(context, beelineAPI.info_availablePromisedPayment)
+        logger.info("info_availablePromisedPayment: %s: %s", update.message.from_user.first_name, response)
+        result = f'💵 Текущий баланс: {"{0:.2f}".format(response["amount"]).rstrip("0").rstrip(".")} рублей\n\n'
+
     response = call_func(context, beelineAPI.info_accumulators)
-    logger.info("get_accumulators: %s: %s", update.message.from_user.first_name, response)
+    logger.info("info_accumulators: %s: %s", update.message.from_user.first_name, response)
 
     def format_unit_count(accumulator):
         unit = accumulator['unit']
@@ -151,25 +168,25 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             result = f'🔢 Осталось: {result}\n'
 
+        if 'isSpeedDown' in accumulator and accumulator['isSpeedDown']:
+            result = '📉 ' + result
+        if 'isSpeedUp' in accumulator and accumulator['isSpeedUp']:
+            result = '📈 ' + result
         if 'dateResetPacket' in accumulator and not is_inet_unlim:
             date_reset = str_to_datetime(accumulator['dateResetPacket'])
             date_str = str(date_reset.strftime('%d %B %Y'))
-            result += f'📅 Дата сброса пакета: {date_str.lower()} года\n'
-        if 'isSpeedDown' in accumulator and accumulator['isSpeedDown']:
-            result += '📉 - счётчик имеет флаг уменьшенной скорости\n'
-        if 'isSpeedUp' in accumulator and accumulator['isSpeedUp']:
-            result += '📈 - счётчик имеет флаг повышенной скорости\n'
+            if date_str != billing_date_str:
+                result += f'Дата сброса пакета: {date_str.lower()} года\n'
         #if 'sdbShare' in accumulator and accumulator['sdbShare']:
             #result += '👪 '
         #result += f'Источник: {accumulator["socName"]}\n'
         #result += f'Действует: {accumulator["accName"]}'
 
-        return result + f'\n\n'
+        return result
 
     # пропускаем 'Условия использования интернета в международном роуминге'
     accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
 
-    result = ''
     if len(accumulators) > 0:
         result += '📜 Остатки пакетов:\n'
     for accumulator in accumulators:
@@ -267,7 +284,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if description["rcRate"] > 0:
             result += f'❌💸️ Платная услуга: {description["entityName"]}'
             if description['rcRatePeriodText'] is not None:
-                result += f' <u>за {description["rcRate"]} рублей {description["rcRatePeriodText"]}</u>'
+                result += f' за <u>{description["rcRate"]} рублей {description["rcRatePeriodText"]}</u>'
             result += f'\n'
 
     if result == '':
