@@ -47,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if use_white_list and update.effective_chat.id not in white_list:
         return
     await update.message.reply_text(
-        "Привет\! Это неофициальный личный кабинет Билайна с расширенными возможностями\.  "
+        "Привет\! Это неофициальный личный кабинет билайна с расширенными возможностями\.  "
         "\n  "
         "\n"
         "Чтобы начать его использовать, пришлите мне  \n"
@@ -241,6 +241,93 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if 'beeline_user' not in context.user_data:
+        return
+
+    # услуги - наличие 'плохих' и платных, совет по подключению полезных
+    response = call_func(context, beelineAPI.info_serviceList)
+    logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
+    result = ''
+
+    def sort_by_name(service):
+        return service['entityName']
+
+    #services = sorted(response['services'], key=sort_by_name)
+    services = {}
+    for i in response['services']:
+        services[i['name']] = {
+            'entityName': i['entityName']
+        }
+        if 'rcRate' in i:
+            services[i['name']]['rcRate'] = int(i['rcRate'])
+        else:
+            services[i['name']]['rcRate'] = 0
+        if 'rcRatePeriodText' in i:
+            services[i['name']]['rcRatePeriodText'] = i['rcRatePeriodText']
+
+    for soc, description in services.items():
+        if soc in BAD_SERVICES:
+            result += f'❌👎️ Вредная услуга: {description["entityName"]}\n'
+        if description["rcRate"] > 0:
+            result += f'❌💸️ Платная услуга: {description["entityName"]}'
+            if description['rcRatePeriodText'] is not None:
+                result += f' <u>за {description["rcRate"]} рублей {description["rcRatePeriodText"]}</u>'
+            result += f'\n'
+
+    if result == '':
+        result = '✅️ Вредных или платных услуг не обнаружено!\n'
+
+    test_services = GOOD_SERVICES.copy()
+    for soc, description in services.items():
+        if soc in test_services.keys():
+            del test_services[soc]
+
+    if len(test_services) > 0:
+        result += '💡 Советую подключить данные услуги:\n'
+        for service in test_services.values():
+            result += '◦ ' + service['entityName']
+            if 'http' in service['how_to']:
+                result += f'\n🌎 <a href="{service["how_to"]}">Страница услуги в билайне</a>'
+            else:
+                result += f'\n📞 <code>{service["how_to"]}</code>'
+            result += '\n\n'
+
+
+    # подписки - наличие
+    response = call_func(context, beelineAPI.info_subscriptions)
+    logger.info("get_subscriptions: %s: %s", update.message.from_user.first_name, response)
+
+    subscriptions = response['subscriptions']
+    if len(subscriptions) == 0:
+        result += '✅️ Подписки не найдены!\n'
+    else:
+        result += '❌️ Обнаружены подписки:\n'
+        for subscription in subscriptions:
+            result += subscription + '\n'
+
+    # счётчики - наличие флага замедления
+    response = call_func(context, beelineAPI.info_accumulators)
+    logger.info("get_accumulators: %s: %s", update.message.from_user.first_name, response)
+
+    accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
+    is_slowed = False
+    for accumulator in accumulators:
+        if 'isSpeedDown' in accumulator and accumulator['isSpeedDown']:
+            if accumulator['unit'] == 'KBYTE':
+                result += '❌️ Счётчик интернета с уменьшенной скоростью\n'
+            else:
+                result += '❌️ Имеется счётчик с уменьшенной скоростью\n'
+
+    if not is_slowed:
+        result += '✅️ Замедленные счётчики не найдены!\n'
+
+    await update.message.reply_text(
+        result,
+        parse_mode=ParseMode.HTML
+    )
+
+
 async def get_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
@@ -315,5 +402,6 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.Regex('^Тариф$'), get_pricePlan))
     application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
     application.add_handler(MessageHandler(filters.Regex('^Подписки$'), get_subscriptions))
+    application.add_handler(MessageHandler(filters.Regex('^Проверить мой номер$'), check_number))
 
     application.run_polling()
