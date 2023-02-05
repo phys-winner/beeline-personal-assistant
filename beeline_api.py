@@ -20,6 +20,7 @@ PRICEPLAN = INFO + 'pricePlan'
 SUBSCRIPTIONS = INFO + 'subscriptions'
 PROMISED_BALANCE = INFO + 'availablePromisedPayment'
 PREPAID_BALANCE = INFO + 'prepaidBalance'
+PREPAID_ADD_BALANCE = INFO + 'prepaidAddBalance'
 BILL_DETAIL = INFO + 'onlineBillDetail'
 
 
@@ -122,6 +123,9 @@ class BeelineAPI:
 
     def info_prepaidBalance(self, number: BeelineNumber):
         return self.__get_request__(url=PREPAID_BALANCE, beeline_number=number)
+
+    def info_prepaidAddBalance(self, number: BeelineNumber):
+        return self.__get_request__(url=PREPAID_ADD_BALANCE, beeline_number=number)
 
     def info_onlineBillDetail(self, number: BeelineNumber,
                               period_start: datetime,

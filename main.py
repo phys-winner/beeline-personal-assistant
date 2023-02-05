@@ -1,7 +1,5 @@
 import logging
-import re
 import locale
-import asyncio
 from beeline_api_errors import *
 from keyboards import *
 from utils import *
@@ -12,9 +10,7 @@ from config_secrets import *
 from telegram import Update, ReplyKeyboardRemove
 from telegram.constants import ParseMode
 from telegram.ext import (
-    Application,
     ApplicationBuilder,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -130,24 +126,38 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = call_func(context, beelineAPI.info_accumulators)
     logger.info("info_accumulators: %s: %s", update.message.from_user.first_name, response)
 
-    def format_unit_count(accumulator):
-        unit = accumulator['unit']
-        rest = accumulator['rest']
+    # пропускаем 'Условия использования интернета в международном роуминге'
+    accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
+
+    response = call_func(context, beelineAPI.info_prepaidAddBalance)
+    logger.info("info_prepaidAddBalance: %s: %s", update.message.from_user.first_name, response)
+    balances = [n for n in response['balanceTime']]
+    balances.extend([n for n in response['balanceSMS']])
+
+    def format_unit_count(counter):
+        unit = counter['unit']
+        #
+        rest = None
+        if 'value' in counter:
+            rest = counter['value']
+        else:
+            rest = counter['rest']
+
         size = None
-        if 'size' in accumulator:
-            size = accumulator['size']
+        if 'size' in counter:
+            size = counter['size']
         if unit == 'KBYTE':
             result = format_bytes(rest, unit)
             if size is not None and size >= rest:
                 result += ' из ' + format_bytes(size, unit)
             return result
         elif unit == 'SECONDS':
-            result = str(rest // 60)
+            result = str(int(rest // 60))
             if size is not None and size >= rest:
                 result += ' из ' + str(size // 60)
             return result + " минут"
         elif unit == 'SMS':
-            result = str(rest)
+            result = str(int(rest))
             if size is not None and size >= rest:
                 result += ' из ' + str(rest)
             return result + " смс"
@@ -157,31 +167,31 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result += ' из ' + str(rest)
         return result
 
-    def format_accumulator(accumulator):
+    def format_counter(counter):
         result = ''
-        is_inet_unlim = 'soc' in accumulator \
-                and accumulator['soc'] == 'SBL4P2_3' \
-                and accumulator['unit'] == 'KBYTE'
+        is_inet_unlim = 'soc' in counter \
+                        and counter['soc'] == 'SBL4P2_3' \
+                        and counter['unit'] == 'KBYTE'
         if is_inet_unlim:
             result = f'♾️ безлимит'
-        elif 'rest' in accumulator:
-            result = format_unit_count(accumulator)
+        elif 'rest' in counter or 'value' in counter:
+            result = format_unit_count(counter)
 
-        if accumulator['unit'] == 'KBYTE':
+        if counter['unit'] == 'KBYTE':
             result = f'🌎 Интернет: {result}\n'
-        elif accumulator['unit'] == 'SECONDS':
+        elif counter['unit'] == 'SECONDS':
             result = f'📞 Минуты: {result}\n'
-        elif accumulator['unit'] == 'SMS':
+        elif counter['unit'] == 'SMS':
             result = f'✉️ SMS: {result}\n'
         else:
             result = f'🔢 Осталось: {result}\n'
 
-        if 'isSpeedDown' in accumulator and accumulator['isSpeedDown']:
+        if 'isSpeedDown' in counter and counter['isSpeedDown']:
             result = '📉 ' + result
-        if 'isSpeedUp' in accumulator and accumulator['isSpeedUp']:
+        if 'isSpeedUp' in counter and counter['isSpeedUp']:
             result = '📈 ' + result
-        if 'dateResetPacket' in accumulator and not is_inet_unlim:
-            date_reset = str_to_datetime(accumulator['dateResetPacket'])
+        if 'dateResetPacket' in counter and not is_inet_unlim:
+            date_reset = str_to_datetime(counter['dateResetPacket'])
             date_str = str(date_reset.strftime('%d %B %Y'))
             if date_str != billing_date_str:
                 result += f'Дата сброса пакета: {date_str.lower()} года\n'
@@ -192,13 +202,12 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return result
 
-    # пропускаем 'Условия использования интернета в международном роуминге'
-    accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
-
-    if len(accumulators) > 0:
+    if len(accumulators) > 0 or len(balances) > 0:
         result += '📜 Остатки пакетов:\n'
     for accumulator in accumulators:
-        result += format_accumulator(accumulator)
+        result += format_counter(accumulator)
+    for balance in balances:
+        result += format_counter(balance)
 
     await wait_msg.edit_text(result)
 
@@ -459,19 +468,6 @@ async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def send_changelog(bot):
-    for user in white_list:
-        await bot.send_message(text='Привет! Мы добавили возможность смотреть '
-                               '<b>🌎 потребление интернета</b> за сегодня, '
-                               'неделю и месяц! Попробуйте, нажав на '
-                               '<b>"📙 Детализация"</b>!\n\n'
-                               'Также теперь при показе основной информации '
-                               'показывается текущий номер телефона, и '
-                               'исправлено отображение баланса, если у вас '
-                               '0 рублей на счету.',
-                                        reply_markup=main_menu_keyboard(),
-                                        parse_mode=ParseMode.HTML,
-                                        chat_id=user)
 
 if __name__ == '__main__':
     persistence = PicklePersistence(filepath="beeline_data.pickle", update_interval=5)
@@ -498,12 +494,5 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
 
     application.add_handler(MessageHandler(filters.Regex('📙 Детализация'), get_bill_detail))
-
-    # send changelog
-    '''
-    loop = asyncio.get_event_loop()
-    coroutine = send_changelog(application.bot)
-    loop.run_until_complete(coroutine)
-    '''
 
     application.run_polling()
