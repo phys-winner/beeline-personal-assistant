@@ -241,6 +241,26 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def get_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if 'beeline_user' not in context.user_data:
+        return
+
+    response = call_func(context, beelineAPI.info_subscriptions)
+    logger.info("get_subscriptions: %s: %s", update.message.from_user.first_name, response)
+
+    subscriptions = response['subscriptions']
+    if len(subscriptions) == 0:
+        result = '✅️ Подписки не найдены!'
+    else:
+        result = '❌️ Обнаружены подписки:\n'
+        for subscription in subscriptions:
+            result += subscription + '\n'
+
+    await update.message.reply_text(
+        result
+    )
+
+
 async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
@@ -294,5 +314,6 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.Regex('^Услуги$'), get_services))
     application.add_handler(MessageHandler(filters.Regex('^Тариф$'), get_pricePlan))
     application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
+    application.add_handler(MessageHandler(filters.Regex('^Подписки$'), get_subscriptions))
 
     application.run_polling()
