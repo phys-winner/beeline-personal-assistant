@@ -119,9 +119,6 @@ class BeelineAPI:
     def info_subscriptions(self, number: BeelineNumber):
         return self.__get_request__(url=SUBSCRIPTIONS, beeline_number=number)
 
-    def info_availablePromisedPayment(self, number: BeelineNumber):
-        return self.__get_request__(url=PROMISED_BALANCE, beeline_number=number)
-
     def info_prepaidBalance(self, number: BeelineNumber):
         return self.__get_request__(url=PREPAID_BALANCE, beeline_number=number)
 

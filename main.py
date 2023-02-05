@@ -112,18 +112,13 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = call_func(context, beelineAPI.info_prepaidBalance)
     logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
     billing_date_str = ''
-    if response['balance'] > 0:
-        result = f'💵 Текущий баланс: {"{0:.2f}".format(response["balance"]).rstrip("0").rstrip(".")} рублей\n'
-        if 'nextBillingDate' in response \
-                and response['nextBillingDate'] is not None:
-            date_reset = str_to_datetime(response["nextBillingDate"], "%Y-%m-%d")
-            billing_date_str = str(date_reset.strftime('%d %B %Y'))
-            result += f'Дата следующего списания: {billing_date_str.lower()} года\n'
-        result += '\n'
-    else:
-        response = call_func(context, beelineAPI.info_availablePromisedPayment)
-        logger.info("info_availablePromisedPayment: %s: %s", update.message.from_user.first_name, response)
-        result = f'💵 Текущий баланс: {"{0:.2f}".format(response["amount"]).rstrip("0").rstrip(".")} рублей\n\n'
+    result = f'💵 Текущий баланс: {"{0:.2f}".format(response["balance"]).rstrip("0").rstrip(".")} рублей\n'
+    if 'nextBillingDate' in response \
+            and response['nextBillingDate'] is not None:
+        date_reset = str_to_datetime(response["nextBillingDate"], "%Y-%m-%d")
+        billing_date_str = str(date_reset.strftime('%d %B %Y'))
+        result += f'Дата следующего списания: {billing_date_str.lower()} года\n'
+    result += '\n'
 
     response = call_func(context, beelineAPI.info_accumulators)
     logger.info("info_accumulators: %s: %s", update.message.from_user.first_name, response)
