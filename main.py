@@ -210,11 +210,17 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     services = sorted(response['services'], key=sort_by_name)
 
     def format_service_line(service):
-        result = ''
         if service['removeInd'] == 'Y':
-            result += '🟢'
+            result = '🟢'
         else:
-            result += '🔴'
+            result = '🔴'
+
+        if 'rcRate' in service and service['rcRate'] > 0:
+            result += f'💸️ за {service["rcRate"]} рублей'
+            if 'rcRatePeriodText' in service and service['rcRatePeriodText'] is not None:
+                result += f' {service["rcRatePeriodText"]}'
+            result += '\n'
+
         result += f' {service["entityName"].replace("  ", " ")}'
         if service['expDate'] is not None:
             exp_date = str_to_datetime(service['expDate'])
@@ -282,10 +288,11 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if soc in BAD_SERVICES:
             result += f'❌👎️ Вредная услуга: {description["entityName"]}\n'
         if description["rcRate"] > 0:
-            result += f'❌💸️ Платная услуга: {description["entityName"]}'
+            result += f'❌💸️ Платная услуга: {description["entityName"]} ' \
+                      f'за <u>{description["rcRate"]} рублей'
             if description['rcRatePeriodText'] is not None:
-                result += f' за <u>{description["rcRate"]} рублей {description["rcRatePeriodText"]}</u>'
-            result += f'\n'
+                result += f' {description["rcRatePeriodText"]}'
+            result += f'</u>\n'
 
     if result == '':
         result = '✅️ Вредных или платных услуг не обнаружено!\n'
