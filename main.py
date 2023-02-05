@@ -98,7 +98,7 @@ def call_func(context: ContextTypes.DEFAULT_TYPE, func):
     return response
 
 
-async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' not in context.user_data:
         return
 
@@ -159,26 +159,21 @@ async def get_accumulators(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result += '📉 - счётчик имеет флаг уменьшенной скорости\n'
         if 'isSpeedUp' in accumulator and accumulator['isSpeedUp']:
             result += '📈 - счётчик имеет флаг повышенной скорости\n'
-        if 'sdbShare' in accumulator and accumulator['sdbShare']:
-            result += '👪 '
+        #if 'sdbShare' in accumulator and accumulator['sdbShare']:
+            #result += '👪 '
         #result += f'Источник: {accumulator["socName"]}\n'
-        result += f'Действует: {accumulator["accName"]}'
+        #result += f'Действует: {accumulator["accName"]}'
 
         return result + f'\n\n'
 
     # пропускаем 'Условия использования интернета в международном роуминге'
     accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
 
-    if len(accumulators) == 0:
-        result = 'У вас нет счётчиков для отображения'
-    else:
-        result = 'Список счётчиков:\n'
-        for accumulator in accumulators:
-            if 'sdbShare' in accumulator and accumulator['sdbShare']:
-                result = 'Обозначение: 👪 - используется в семье\n\n' + result
-                break
-        for accumulator in accumulators:
-            result += format_accumulator(accumulator)
+    result = ''
+    if len(accumulators) > 0:
+        result += '📜 Остатки пакетов:\n'
+    for accumulator in accumulators:
+        result += format_accumulator(accumulator)
 
     await update.message.reply_text(
         result
@@ -328,26 +323,6 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def get_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if 'beeline_user' not in context.user_data:
-        return
-
-    response = call_func(context, beelineAPI.info_subscriptions)
-    logger.info("get_subscriptions: %s: %s", update.message.from_user.first_name, response)
-
-    subscriptions = response['subscriptions']
-    if len(subscriptions) == 0:
-        result = '✅️ Подписки не найдены!'
-    else:
-        result = '❌️ Обнаружены подписки:\n'
-        for subscription in subscriptions:
-            result += subscription + '\n'
-
-    await update.message.reply_text(
-        result
-    )
-
-
 async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return
@@ -397,11 +372,12 @@ if __name__ == '__main__':
 
     application.add_handler(conv_handler)
 
-    application.add_handler(MessageHandler(filters.Regex('^Хранящиеся данные$'), show_data))
-    application.add_handler(MessageHandler(filters.Regex('^Услуги$'), get_services))
-    application.add_handler(MessageHandler(filters.Regex('^Тариф$'), get_pricePlan))
-    application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
-    application.add_handler(MessageHandler(filters.Regex('^Подписки$'), get_subscriptions))
-    application.add_handler(MessageHandler(filters.Regex('^Проверить мой номер$'), check_number))
+    #application.add_handler(MessageHandler(filters.Regex('Хранящиеся данные$'), show_data))
+    application.add_handler(MessageHandler(filters.Regex('📱 Основная информация'), show_info))
+    application.add_handler(MessageHandler(filters.Regex('✅ Проверить мой номер'), check_number))
+    application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_pricePlan))
+    application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
+
+    #application.add_handler(MessageHandler(filters.Regex('^Счётчики$'), get_accumulators))
 
     application.run_polling()
