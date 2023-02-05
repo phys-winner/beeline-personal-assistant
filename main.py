@@ -1,9 +1,11 @@
 import logging
 import re
 import locale
+import asyncio
 from beeline_api_errors import *
 from keyboards import *
 from utils import *
+from datetime import datetime, timedelta
 
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
@@ -45,13 +47,13 @@ async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if use_white_list and update.effective_chat.id not in white_list:
+        return
     if 'beeline_user' in context.user_data:
         await show_main_menu(update, context)
         return
     user = update.message.from_user
     logger.info("start: %s: %s", user.first_name, update.message.text)
-    if use_white_list and update.effective_chat.id not in white_list:
-        return
     await update.message.reply_text(
         "Привет\! Это неофициальный личный кабинет билайна с расширенными возможностями\.  "
         "\n  "
@@ -96,9 +98,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-def call_func(context: ContextTypes.DEFAULT_TYPE, func):
+def call_func(context: ContextTypes.DEFAULT_TYPE, func, *arg):
     index_number = context.user_data['beeline_user'].current_number
-    response, new_number = func(context.user_data['beeline_user'].numbers[index_number])
+    response, new_number = func(context.user_data['beeline_user'].numbers[index_number], *arg)
 
     context.user_data['beeline_user'].numbers[index_number] = new_number
     return response
@@ -106,13 +108,18 @@ def call_func(context: ContextTypes.DEFAULT_TYPE, func):
 
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'beeline_user' not in context.user_data:
-        return
+        return await start(update, context)
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_prepaidBalance)
     logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
+
+    index_number = context.user_data['beeline_user'].current_number
+    current_ctn = context.user_data['beeline_user'].numbers[index_number].ctn
+
     billing_date_str = ''
-    result = f'💵 Текущий баланс: {"{0:.2f}".format(response["balance"]).rstrip("0").rstrip(".")} рублей\n'
+    result = f'📱 Номер телефона: +7{current_ctn}\n'
+    result += f'💵 Текущий баланс: {"{0:.2f}".format(response["balance"]).rstrip("0").rstrip(".")} рублей\n'
     if 'nextBillingDate' in response \
             and response['nextBillingDate'] is not None:
         date_reset = str_to_datetime(response["nextBillingDate"], "%Y-%m-%d")
@@ -198,11 +205,11 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
-        return
+        return await start(update, context)
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
-    logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
+    logger.info("info_serviceList: %s: %s", update.message.from_user.first_name, response)
 
     def sort_by_name(service):
         return service['entityName']
@@ -259,12 +266,12 @@ async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
-        return
+        return await start(update, context)
 
     # услуги - наличие 'плохих' и платных, совет по подключению полезных
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
-    logger.info("get_services: %s: %s", update.message.from_user.first_name, response)
+    logger.info("info_serviceList: %s: %s", update.message.from_user.first_name, response)
     result = ''
 
     def sort_by_name(service):
@@ -304,17 +311,16 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if len(test_services) > 0:
         result += '💡 Советую подключить данные услуги:\n'
         for service in test_services.values():
-            result += '◦ ' + service['entityName']
+            result += '⚬ ' + service['entityName']
             if 'http' in service['how_to']:
                 result += f'\n🌎 <a href="{service["how_to"]}">Страница услуги в билайне</a>'
             else:
                 result += f'\n📞 <code>{service["how_to"]}</code>'
             result += '\n\n'
 
-
     # подписки - наличие
     response = call_func(context, beelineAPI.info_subscriptions)
-    logger.info("get_subscriptions: %s: %s", update.message.from_user.first_name, response)
+    logger.info("info_subscriptions: %s: %s", update.message.from_user.first_name, response)
 
     subscriptions = response['subscriptions']
     if len(subscriptions) == 0:
@@ -343,9 +349,88 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
 
 
-async def get_pricePlan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
-        return
+        return await start(update, context)
+
+    wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
+
+    period_end = datetime.now()
+    period_start = period_end - timedelta(hours=30*24)
+
+    response = call_func(context, beelineAPI.info_onlineBillDetail, period_start, period_end)
+    logger.info("info_onlineBillDetail: %s: %s", update.message.from_user.first_name, response)
+
+    call_details = response['callDetails']
+    today = period_end.replace(hour=0, minute=0, second=0, microsecond=0)
+    current_week = period_end - timedelta(weeks=1)
+    today_details = {}
+    week_details = {}
+    month_details = {}
+
+    def add_value(date_dict, detail):
+        bill_name = 'Интернет'
+        if 'number' in detail and detail['number'] != '':
+            bill_name += f' на +{detail["number"]}'
+        if bill_name in date_dict.keys():
+            date_dict[bill_name] += detail['trafficVolume']
+        else:
+            date_dict[bill_name] = detail['trafficVolume']
+
+    for detail in call_details:
+        if 'trafficUnit' not in detail or detail['trafficUnit'] != 'KBYTE':
+            continue
+        if 'dateTime' not in detail or 'trafficVolume' not in detail:
+            continue
+        date = str_to_datetime(detail['dateTime'])
+        add_value(month_details, detail)
+        if date >= today:
+            add_value(today_details, detail)
+        if date >= current_week:
+            add_value(week_details, detail)
+
+    def append_details(date_dict):
+        result = ''
+        if len(date_dict) == 1:
+            for name, traffic in date_dict.items():
+                if name == 'Интернет':
+                    result += f'{format_bytes(traffic, "KBYTE")}'
+                else:
+                    result += f'{format_bytes(traffic, "KBYTE")} ({name.lower()})'
+        else:
+            for name, traffic in date_dict.items():
+                result += f'\n⚬ {name}: <b>{format_bytes(traffic, "KBYTE")}</b>'
+            result += '\n'
+        return result + '\n'
+
+    period_start_str = str(period_start.strftime('%d %B %Y')).lower()
+    period_end_str = str(period_end.strftime('%d %B %Y')).lower()
+    result = f'🌎 <b>Потребление интернета</b>\n' \
+             f'Период: c {period_start_str} г. по {period_end_str} г.\n\n'
+
+    if len(today_details) == 0:
+        result += '<u>сегодня с 00:00</u> интернет не был использован\n'
+    else:
+        result += f'За сегодня (с 00:00): {append_details(today_details)}'
+
+    if len(week_details) == 0:
+        result += '<u>за неделю</u> интернет не был использован\n'
+    else:
+        result += f'За неделю: {append_details(week_details)}'
+
+    if len(month_details) == 0:
+        result += '<u>за месяц</u> интернет не был использован\n'
+    else:
+        result += f'За месяц: {append_details(month_details)}'
+        sum_traffic = sum(month_details.values())
+        result += f'<b>Всего было потрачено {format_bytes(sum_traffic, "KBYTE")}</b>.'
+
+    await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
+
+
+async def get_price_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if 'beeline_user' not in context.user_data:
+        return await start(update, context)
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_pricePlan)
@@ -373,6 +458,21 @@ async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         repr(context.user_data['beeline_user'])
     )
 
+
+async def send_changelog(bot):
+    for user in white_list:
+        await bot.send_message(text='Привет! Мы добавили возможность смотреть '
+                               '<b>🌎 потребление интернета</b> за сегодня, '
+                               'неделю и месяц! Попробуйте, нажав на '
+                               '<b>"📙 Детализация"</b>!\n\n'
+                               'Также теперь при показе основной информации '
+                               'показывается текущий номер телефона, и '
+                               'исправлено отображение баланса, если у вас '
+                               '0 рублей на счету.',
+                                        reply_markup=main_menu_keyboard(),
+                                        parse_mode=ParseMode.HTML,
+                                        chat_id=user)
+
 if __name__ == '__main__':
     persistence = PicklePersistence(filepath="beeline_data.pickle", update_interval=5)
     application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
@@ -393,7 +493,17 @@ if __name__ == '__main__':
 
     application.add_handler(MessageHandler(filters.Regex('📱 Основная информация'), show_info))
     application.add_handler(MessageHandler(filters.Regex('✅ Проверить мой номер'), check_number))
-    application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_pricePlan))
+
+    application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_price_plan))
     application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
+
+    application.add_handler(MessageHandler(filters.Regex('📙 Детализация'), get_bill_detail))
+
+    # send changelog
+    '''
+    loop = asyncio.get_event_loop()
+    coroutine = send_changelog(application.bot)
+    loop.run_until_complete(coroutine)
+    '''
 
     application.run_polling()

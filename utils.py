@@ -22,12 +22,12 @@ def format_bytes(size, unit):
     n = 0
     if unit == 'KBYTE':
         n = 1
-    power_labels = {0: '', 1: 'кило', 2: 'мега', 3: 'гига', 4: 'тера'}
+    power_labels = {0: '', 1: 'К', 2: 'М', 3: 'Г', 4: 'Т'}
     while size > power:
         size /= power
         n += 1
     #return size, power_labels[n] + 'байт'
-    return f'{size:.1f} {power_labels[n] + "байт"}'
+    return f'{size:.1f} {power_labels[n] + "Б"}'
 
 
 def str_to_datetime(date_str, format='%Y-%m-%dT%H:%M:%S.%f'):

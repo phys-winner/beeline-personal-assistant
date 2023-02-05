@@ -4,7 +4,8 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup
 def main_menu_keyboard():
     keyboard = [[KeyboardButton('📱 Основная информация')],
                 [KeyboardButton('✅ Проверить мой номер')],
-                [KeyboardButton('📖 Тариф'), KeyboardButton('🔎 Услуги')]]
+                [KeyboardButton('📖 Тариф'), KeyboardButton('🔎 Услуги')],
+                [KeyboardButton('📙 Детализация')]]
     return ReplyKeyboardMarkup(keyboard, is_persistent=False)
 
 

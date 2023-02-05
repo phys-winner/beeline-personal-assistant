@@ -2,7 +2,7 @@ import requests
 import json
 from ratelimiter import RateLimiter
 from beeline_api_errors import *
-
+from datetime import datetime
 
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
              '(KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
@@ -20,6 +20,7 @@ PRICEPLAN = INFO + 'pricePlan'
 SUBSCRIPTIONS = INFO + 'subscriptions'
 PROMISED_BALANCE = INFO + 'availablePromisedPayment'
 PREPAID_BALANCE = INFO + 'prepaidBalance'
+BILL_DETAIL = INFO + 'onlineBillDetail'
 
 
 class BeelineUser:
@@ -121,5 +122,17 @@ class BeelineAPI:
 
     def info_prepaidBalance(self, number: BeelineNumber):
         return self.__get_request__(url=PREPAID_BALANCE, beeline_number=number)
+
+    def info_onlineBillDetail(self, number: BeelineNumber,
+                              period_start: datetime,
+                              period_end: datetime):
+        params = {
+            'periodStart': period_start.strftime('%Y-%m-%d'),
+            'periodEnd': period_end.strftime('%Y-%m-%d')
+        }
+        response, number = self.__get_request__(url=BILL_DETAIL, params=params,
+                                                beeline_number=number)
+
+        return response, number
 
 
