@@ -31,13 +31,23 @@ class BeelineUser:
         self.current_number = 0
         self.numbers = [number]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'BeelineUser: current_index={self.current_number},' \
                f'numbers=[{";".join([repr(num) for num in self.numbers])}]'
+
+    def __eq__(self, o) -> bool:
+        return self.current_number == o.current_number and \
+            self.numbers == o.numbers
 
 
 class BeelineNumber:
     """Класс с информацией о номере телефона"""
+
+    def __eq__(self, o) -> bool:
+        return self.ctn == o.ctn and \
+            self.password == o.password and \
+            self.token == o.token and \
+            self.name == o.name
 
     def __init__(self, ctn, password, token, name):
         self.ctn = ctn
@@ -45,9 +55,10 @@ class BeelineNumber:
         self.token = token
         self.name = name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'BeelineNumber: ctn={self.ctn},password={self.password},' \
                f'token={self.token}'
+
 
 
 class BeelineAPI:
@@ -56,7 +67,7 @@ class BeelineAPI:
     def __init__(self):
         self.headers = {'User-Agent': USER_AGENT}
 
-    @RateLimiter(max_calls=3, period=1)
+    @RateLimiter(max_calls=5, period=1)
     def __get_request__(self, url, params=None, beeline_number=None):
         cookies = {}
         if beeline_number is not None and url != AUTH:

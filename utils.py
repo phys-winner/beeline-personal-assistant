@@ -1,6 +1,10 @@
 from datetime import datetime
 import re
 
+from telegram.ext import ContextTypes
+
+from beeline_api import BeelineNumber
+
 BAD_SERVICES = ['P2PTOR_NO', 'INFO300GB', 'SPEED_512', 'PRIOR3', 'SPDKCH']
 GOOD_SERVICES = {
 'USSD_BAN': {'entityName': 'Запрет USSD хвостов; отключение рекламы при USSD запросах, например, в *102#', 'how_to': '067405541'},
@@ -14,7 +18,11 @@ GOOD_SERVICES = {
 }
 
 PLEASE_WAIT_MSG = '⌛ Пожалуйста, подождите...'
+AUTH_MSG = 'Для авторизации отправьте \n' \
+           '📱<b>номер телефона</b> и  🔒<b>пароль</b> через пробел.'
 
+SELECT_ACC_REGEXP = r'Выбрать .+ \(\+7(\d{10})\)$'
+AUTH_REGEXP = r'(\d{10}) (.+)$'
 
 def format_bytes(size, unit):
     # 2**10 = 1024
@@ -34,3 +42,20 @@ def str_to_datetime(date_str, format='%Y-%m-%dT%H:%M:%S.%f'):
     # '2023-02-05T00:00:00.000Z'
     # '2023-07-17T00:00:00.000+0300'
     return datetime.strptime(date_str[:23], format)
+
+
+def get_current_number(context: ContextTypes.DEFAULT_TYPE) -> BeelineNumber:
+    index_number = context.user_data['beeline_user'].current_number
+    return context.user_data['beeline_user'].numbers[index_number]
+
+
+def update_current_number(context: ContextTypes.DEFAULT_TYPE, new_number: BeelineNumber):
+    index_number = context.user_data['beeline_user'].current_number
+    context.user_data['beeline_user'].numbers[index_number] = new_number
+
+
+def call_func(context: ContextTypes.DEFAULT_TYPE, func, *arg):
+    response, new_number = func(get_current_number(context), *arg)
+    update_current_number(context, new_number)
+
+    return response

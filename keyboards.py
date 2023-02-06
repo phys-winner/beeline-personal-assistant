@@ -3,12 +3,13 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 def main_menu_keyboard():
     keyboard = [[KeyboardButton('📱 Основная информация')],
-                [KeyboardButton('✅ Проверить мой номер')],
+                [KeyboardButton('✅ Проверить номер'), KeyboardButton('📙 Детализация')],
                 [KeyboardButton('📖 Тариф'), KeyboardButton('🔎 Услуги')],
-                [KeyboardButton('📙 Детализация')]]
-    return ReplyKeyboardMarkup(keyboard, is_persistent=False)
+                [KeyboardButton('⚙️ Настройки')]]
+    return ReplyKeyboardMarkup(keyboard, is_persistent=False, resize_keyboard=True)
 
 
-def return_to_main_menu_keyboard():
-    keyboard = [[KeyboardButton('🔙 В главное меню')]]
-    return ReplyKeyboardMarkup(keyboard)
+def back_menu():
+    return ReplyKeyboardMarkup([[KeyboardButton('🔙 Назад')]],
+                               is_persistent=True, resize_keyboard=True)
+

@@ -5,6 +5,7 @@ from keyboards import *
 from utils import *
 from datetime import datetime, timedelta
 
+from account_menu import *
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
 from config_secrets import *
 from telegram import Update, ReplyKeyboardRemove
@@ -27,82 +28,78 @@ locale.setlocale(locale.LC_ALL, 'rus')
 
 beelineAPI = BeelineAPI()
 use_white_list = len(white_list) > 0
-AUTHORIZE, TEST = range(2)
+
+ADD_ACCOUNT, RENAME_ACCOUNT = range(2)
 
 
-async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Вы находитесь в главном меню.\n\n'
-                                    'Выберите необходимый раздел:',
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    number = get_current_number(context)
+    await update.message.reply_text('Вы находитесь в главном меню.\n'
+                                    f'Текущий аккаунт: {number.name} (+7{number.ctn})\n\n'
+                                    'Выберите интересующий раздел:',
                                     reply_markup=main_menu_keyboard())
 
 
-async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'beeline_user' in context.user_data:
-        del context.user_data['beeline_user']
-    return await start(update, context)
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if use_white_list and update.effective_chat.id not in white_list:
-        return
+        return ConversationHandler.END
     if 'beeline_user' in context.user_data:
         await show_main_menu(update, context)
-        return
+        return ConversationHandler.END
     user = update.message.from_user
     logger.info("start: %s: %s", user.first_name, update.message.text)
     await update.message.reply_text(
-        "Привет\! Это неофициальный личный кабинет билайна с расширенными возможностями\.  "
-        "\n  "
-        "\n"
-        "Чтобы начать его использовать, пришлите мне  \n"
-        "📱*номер телефона* и  🔒*пароль* через пробел\.",
-        parse_mode=ParseMode.MARKDOWN_V2,
+        "Привет! Это неофициальный личный кабинет билайна с расширенными возможностями."
+        f"\n\n{AUTH_MSG}",
+        parse_mode=ParseMode.HTML,
         reply_markup=ReplyKeyboardRemove()
     )
-
-    return AUTHORIZE
+    return ADD_ACCOUNT
 
 
 async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if 'beeline_user' in context.user_data:
-        await show_main_menu(update, context)
-        return
+    if use_white_list and update.effective_chat.id not in white_list:
+        return ConversationHandler.END
 
-    ctn, password = re.findall(r'(\d{10}) (.+)$', update.message.text)[0]
+    ctn, password = re.findall(AUTH_REGEXP, update.message.text)[0]
+    if 'beeline_user' in context.user_data:
+        for i, number in enumerate(context.user_data['beeline_user'].numbers):
+            if ctn == number.ctn:
+                await update.message.reply_text(f'✔️ У вас уже есть этот аккаунт.')
+                await account_menu(update, context)
+                return ConversationHandler.END
+
     logger.info("login: %s", update.message.text)
     try:
         token = beelineAPI.obtain_token(ctn, password)
     except InvalidResponse as e:
         await update.message.reply_text("Произошла проблема при авторизации, попробуйте ещё раз.\n\n" + e.value)
-        return AUTHORIZE
+        return ADD_ACCOUNT
     except StatusNotOK as e:
         await update.message.reply_text("Неверный номер телефона или пароль, попробуйте ещё раз.")
-        return AUTHORIZE
+        return ADD_ACCOUNT
 
-    new_number = BeelineNumber(ctn, password, token, "Основной")
-    if 'beeline_user' not in context.user_data:
+    if 'beeline_user' in context.user_data:
+        new_number = BeelineNumber(ctn, password, token, '')
+        new_index = len(context.user_data['beeline_user'].numbers)
+        context.user_data['beeline_user'].numbers.append(new_number)
+        context.user_data['beeline_user'].current_number = new_index
+
+        # именуем номера как тарифы
+        response = call_func(context, beelineAPI.info_pricePlan)
+        logger.info("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
+        plan = response['pricePlanInfo']
+
+        context.user_data['beeline_user'].numbers[new_index].name = plan['entityName']
+    else:
+        new_number = BeelineNumber(ctn, password, token, "Основной")
         new_user = BeelineUser(new_number)
         context.user_data['beeline_user'] = new_user
     await show_main_menu(update, context)
-
     return ConversationHandler.END
 
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("cancel")
-
-    return ConversationHandler.END
-
-
-def call_func(context: ContextTypes.DEFAULT_TYPE, func, *arg):
-    index_number = context.user_data['beeline_user'].current_number
-    response, new_number = func(context.user_data['beeline_user'].numbers[index_number], *arg)
-
-    context.user_data['beeline_user'].numbers[index_number] = new_number
-    return response
-
-
-async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return await start(update, context)
 
@@ -131,8 +128,12 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     response = call_func(context, beelineAPI.info_prepaidAddBalance)
     logger.info("info_prepaidAddBalance: %s: %s", update.message.from_user.first_name, response)
-    balances = [n for n in response['balanceTime']]
-    balances.extend([n for n in response['balanceSMS']])
+
+    balances = []
+    if 'balanceTime' in response and response['balanceTime'] is not None:
+        balances.extend([n for n in response['balanceTime']])
+    if 'balanceSMS' in response and response['balanceSMS'] is not None:
+        balances.extend([n for n in response['balanceSMS']])
 
     def format_unit_count(counter):
         unit = counter['unit']
@@ -283,10 +284,6 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info("info_serviceList: %s: %s", update.message.from_user.first_name, response)
     result = ''
 
-    def sort_by_name(service):
-        return service['entityName']
-
-    #services = sorted(response['services'], key=sort_by_name)
     services = {}
     for i in response['services']:
         services[i['name']] = {
@@ -320,7 +317,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if len(test_services) > 0:
         result += '💡 Советую подключить данные услуги:\n'
         for service in test_services.values():
-            result += '⚬ ' + service['entityName']
+            result += '⚬  ' + service['entityName']
             if 'http' in service['how_to']:
                 result += f'\n🌎 <a href="{service["how_to"]}">Страница услуги в билайне</a>'
             else:
@@ -403,12 +400,12 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if len(date_dict) == 1:
             for name, traffic in date_dict.items():
                 if name == 'Интернет':
-                    result += f'{format_bytes(traffic, "KBYTE")}'
+                    result += f'<b>{format_bytes(traffic, "KBYTE")}</b>'
                 else:
-                    result += f'{format_bytes(traffic, "KBYTE")} ({name.lower()})'
+                    result += f'<b>{format_bytes(traffic, "KBYTE")}</b> ({name.lower()})'
         else:
             for name, traffic in date_dict.items():
-                result += f'\n⚬ {name}: <b>{format_bytes(traffic, "KBYTE")}</b>'
+                result += f'\n⚬  {name}: <b>{format_bytes(traffic, "KBYTE")}</b>'
             result += '\n'
         return result + '\n'
 
@@ -462,37 +459,48 @@ async def get_price_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await wait_msg.edit_text(result)
 
 
-async def show_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        repr(context.user_data['beeline_user'])
-    )
-
-
-
 if __name__ == '__main__':
     persistence = PicklePersistence(filepath="beeline_data.pickle", update_interval=5)
     application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CommandHandler("restart", restart)],
+    auth_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("➕ Добавить новый аккаунт"), show_add_account),
+            MessageHandler(filters.Regex("❌ Удалить"), delete_account)
+        ],
         states={
-            AUTHORIZE: [MessageHandler(
-                filters.Regex(r'(\d{10}) (.+)$'), authorize)
-            ]
+            ADD_ACCOUNT: [MessageHandler(filters.Regex(AUTH_REGEXP), authorize)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        name="main_conversation",
-        persistent=True
+        fallbacks=[
+            MessageHandler(filters.Regex("🔙 Назад"), account_menu),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, start)
+        ],
     )
 
-    application.add_handler(conv_handler)
+    rename_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex("🖊️ Переименовать"), show_rename_account)
+        ],
+        states={
+            RENAME_ACCOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_rename_account)],
+        },
+        fallbacks=[MessageHandler(filters.Regex("🔙 Назад"), account_menu)],
+    )
+
+    application.add_handler(auth_handler)
+    application.add_handler(rename_handler)
 
     application.add_handler(MessageHandler(filters.Regex('📱 Основная информация'), show_info))
-    application.add_handler(MessageHandler(filters.Regex('✅ Проверить мой номер'), check_number))
+    application.add_handler(MessageHandler(filters.Regex('✅ Проверить номер'), check_number))
 
     application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_price_plan))
     application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
-
     application.add_handler(MessageHandler(filters.Regex('📙 Детализация'), get_bill_detail))
 
+    application.add_handler(MessageHandler(filters.Regex('⚙️ Настройки'), account_menu))
+
+    application.add_handler(MessageHandler(filters.Regex(SELECT_ACC_REGEXP), select_account))
+
+    application.add_handler(MessageHandler(filters.Regex('🔙 В главное меню'), show_main_menu))
     application.run_polling()
