@@ -21,8 +21,17 @@ PLEASE_WAIT_MSG = '⌛ Пожалуйста, подождите...'
 AUTH_MSG = 'Для авторизации отправьте \n' \
            '📱<b>номер телефона</b> и  🔒<b>пароль</b> через пробел.'
 
-SELECT_ACC_REGEXP = r'Выбрать .+ \(\+7(\d{10})\)$'
+SELECT_ACC_REGEXP = r'Выбрать (.+) \(\+7([\d*]{10})\)$'
 AUTH_REGEXP = r'(\d{10}) (.+)$'
+
+IS_DEMO_MODE = False
+
+
+def replace_demo_ctn(ctn):
+    if IS_DEMO_MODE:
+        return '905*******'
+    return ctn
+
 
 def format_bytes(size, unit):
     # 2**10 = 1024

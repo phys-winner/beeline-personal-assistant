@@ -34,8 +34,9 @@ ADD_ACCOUNT, RENAME_ACCOUNT = range(2)
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     number = get_current_number(context)
+    number_str = replace_demo_ctn(number.ctn)
     await update.message.reply_text('Вы находитесь в главном меню.\n'
-                                    f'Текущий аккаунт: {number.name} (+7{number.ctn})\n\n'
+                                    f'Текущий аккаунт: {number.name} (+7{number_str})\n\n'
                                     'Выберите интересующий раздел:',
                                     reply_markup=main_menu_keyboard())
 
@@ -109,6 +110,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     index_number = context.user_data['beeline_user'].current_number
     current_ctn = context.user_data['beeline_user'].numbers[index_number].ctn
+    current_ctn = replace_demo_ctn(current_ctn)
 
     billing_date_str = ''
     result = f'📱 Номер телефона: +7{current_ctn}\n'
@@ -378,7 +380,10 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     def add_value(date_dict, detail):
         bill_name = 'Интернет'
         if 'number' in detail and detail['number'] != '':
-            bill_name += f' на +{detail["number"]}'
+            detail_number_str = replace_demo_ctn(detail['number'])
+            if '*' in detail_number_str:
+                detail_number_str = f'7{detail_number_str}'
+            bill_name += f' на +{detail_number_str}'
         if bill_name in date_dict.keys():
             date_dict[bill_name] += detail['trafficVolume']
         else:
@@ -416,7 +421,7 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
              f'Период: c {period_start_str} г. по {period_end_str} г.\n\n'
 
     if len(today_details) == 0:
-        result += '<u>сегодня с 00:00</u> интернет не был использован\n'
+        result += 'Cегодня с 00:00 интернет не был использован\n'
     else:
         result += f'За сегодня (с 00:00): {append_details(today_details)}'
 
@@ -430,7 +435,8 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         result += f'За месяц: {append_details(month_details)}'
         sum_traffic = sum(month_details.values())
-        result += f'<b>Всего было потрачено {format_bytes(sum_traffic, "KBYTE")}</b>.'
+        if format_bytes(sum_traffic, "KBYTE") not in append_details(month_details):
+            result += f'<b>Всего было потрачено {format_bytes(sum_traffic, "KBYTE")}</b>.'
 
     await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
 

@@ -17,8 +17,9 @@ async def check_rename_account(update: Update, context: ContextTypes.DEFAULT_TYP
         return RENAME_ACCOUNT
     else:
         number = get_current_number(context)
+        number_str = replace_demo_ctn(number.ctn)
         await update.message.reply_text(f'✔️ Вы успешно переименовали номер '
-                                        f'<b>+7{number.ctn}</b>.',
+                                        f'<b>+7{number_str}</b>.',
             parse_mode=ParseMode.HTML
         )
         index_number = context.user_data['beeline_user'].current_number
@@ -29,17 +30,19 @@ async def check_rename_account(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def select_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    target_ctn = re.findall(SELECT_ACC_REGEXP, update.message.text)[0]
+    target_name, target_ctn = re.findall(SELECT_ACC_REGEXP, update.message.text)[0]
     for i, number in enumerate(context.user_data['beeline_user'].numbers):
-        if target_ctn == number.ctn:
+        if target_ctn == number.ctn or \
+                ('*' in target_ctn and target_name == number.name):
             context.user_data['beeline_user'].current_number = i
             return await account_menu(update, context)
 
 
 async def show_rename_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     number = get_current_number(context)
+    number_str = replace_demo_ctn(number.ctn)
     await update.message.reply_text(f'Введите новое название для номера '
-                                    f'<b>+7{number.ctn}</b> вместо текущего '
+                                    f'<b>+7{number_str}</b> вместо текущего '
                                     f'<b>"{number.name}"</b>',
         parse_mode=ParseMode.HTML,
         reply_markup=back_menu()
@@ -73,8 +76,9 @@ async def delete_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         new_num = context.user_data['beeline_user'].numbers[count - 1]
 
         context.user_data['beeline_user'].current_number = count - 1
+        old_num_str = replace_demo_ctn(old_num.ctn)
         await update.message.reply_text(f'✔️ Вы успешно удалили аккаунт '
-                                        f'\"{old_num.name}\" (+7{old_num.ctn}).',
+                                        f'\"{old_num.name}\" (+7{old_num_str}).',
             parse_mode=ParseMode.HTML
         )
         del context.user_data['beeline_user'].numbers[index_number]
@@ -86,7 +90,8 @@ async def account_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if 'beeline_user' not in context.user_data:
         return await start(update, context)
     number = get_current_number(context)
-    text = f'Текущий аккаунт: {number.name} (+7{number.ctn})\n\n' \
+    number_str = replace_demo_ctn(number.ctn)
+    text = f'Текущий аккаунт: {number.name} (+7{number_str})\n\n' \
            f'Выберите нужное действие:'
 
     keyboard = [[KeyboardButton('➕ Добавить новый аккаунт')],
@@ -96,7 +101,8 @@ async def account_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     for check_num in context.user_data['beeline_user'].numbers[::-1]:
         if check_num == number:
             continue
-        keyboard.insert(0, [KeyboardButton(f'☎️ ️ Выбрать {check_num.name} (+7{check_num.ctn})')])
+        check_num_str = replace_demo_ctn(check_num.ctn)
+        keyboard.insert(0, [KeyboardButton(f'☎️ ️ Выбрать {check_num.name} (+7{check_num_str})')])
 
     keyboard = ReplyKeyboardMarkup(keyboard, is_persistent=False, resize_keyboard=True)
 
