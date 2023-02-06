@@ -213,9 +213,10 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await wait_msg.edit_text(result)
 
 
-async def get_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
-        return await start(update, context)
+        await start(update, context)
+        return
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
@@ -495,7 +496,7 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.Regex('✅ Проверить номер'), check_number))
 
     application.add_handler(MessageHandler(filters.Regex('📖 Тариф'), get_price_plan))
-    application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), get_services))
+    application.add_handler(MessageHandler(filters.Regex('🔎 Услуги'), show_services))
     application.add_handler(MessageHandler(filters.Regex('📙 Детализация'), get_bill_detail))
 
     application.add_handler(MessageHandler(filters.Regex('⚙️ Настройки'), account_menu))
