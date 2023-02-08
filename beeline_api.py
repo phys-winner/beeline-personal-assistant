@@ -50,9 +50,11 @@ class BeelineNumber:
         self.token_v2 = ''
         self.name = name
         self.rec_services = []
+        self.version = 2
 
     def __eq__(self, o) -> bool:
-        return self.ctn == o.ctn and \
+        return self.version == o.version and \
+            self.ctn == o.ctn and \
             self.password == o.password and \
             self.token == o.token and \
             self.token_v2 == o.token_v2 and \

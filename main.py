@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import locale
@@ -516,9 +517,29 @@ async def get_price_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await wait_msg.edit_text(result)
 
 
+async def fix_user_data(persistence: PicklePersistence) -> None:
+    user_data = await persistence.get_user_data()
+    for user_id, data in user_data.items():
+        if 'beeline_user' not in data:
+            continue
+        numbers = data['beeline_user'].numbers
+        for i, num in enumerate(numbers):
+            data['beeline_user'].numbers[i] = BeelineNumber(
+                ctn=data['beeline_user'].numbers[i].ctn,
+                password=data['beeline_user'].numbers[i].password,
+                token=data['beeline_user'].numbers[i].token,
+                name=data['beeline_user'].numbers[i].name,
+            )
+        await persistence.update_user_data(user_id, data)
+
+
 if __name__ == '__main__':
     persistence = PicklePersistence(filepath="beeline_data.pickle", update_interval=5)
     application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
+
+    # update pickle storage
+    #asyncio.get_event_loop().run_until_complete(fix_user_data(persistence))
+    #asyncio.get_event_loop().run_until_complete(application.update_persistence())
 
     auth_handler = ConversationHandler(
         entry_points=[
@@ -563,3 +584,4 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(enable_rec_services, "^enable_rec_services$"))
 
     application.run_polling()
+
