@@ -53,13 +53,17 @@ def str_to_datetime(date_str, format='%Y-%m-%dT%H:%M:%S.%f'):
     return datetime.strptime(date_str[:23], format)
 
 
+def get_current_index(context: ContextTypes.DEFAULT_TYPE) -> BeelineNumber:
+    return context.user_data['beeline_user'].current_number
+
+
 def get_current_number(context: ContextTypes.DEFAULT_TYPE) -> BeelineNumber:
-    index_number = context.user_data['beeline_user'].current_number
+    index_number = get_current_index(context)
     return context.user_data['beeline_user'].numbers[index_number]
 
 
 def update_current_number(context: ContextTypes.DEFAULT_TYPE, new_number: BeelineNumber):
-    index_number = context.user_data['beeline_user'].current_number
+    index_number = get_current_index(context)
     context.user_data['beeline_user'].numbers[index_number] = new_number
 
 

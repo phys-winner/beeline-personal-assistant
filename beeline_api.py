@@ -43,22 +43,26 @@ class BeelineUser:
 class BeelineNumber:
     """Класс с информацией о номере телефона"""
 
-    def __eq__(self, o) -> bool:
-        return self.ctn == o.ctn and \
-            self.password == o.password and \
-            self.token == o.token and \
-            self.name == o.name
-
     def __init__(self, ctn, password, token, name):
         self.ctn = ctn
         self.password = password
         self.token = token
+        self.token_v2 = ''
         self.name = name
+        self.rec_services = []
+
+    def __eq__(self, o) -> bool:
+        return self.ctn == o.ctn and \
+            self.password == o.password and \
+            self.token == o.token and \
+            self.token_v2 == o.token_v2 and \
+            self.name == o.name and \
+            self.rec_services == o.rec_services
 
     def __repr__(self) -> str:
         return f'BeelineNumber: ctn={self.ctn},password={self.password},' \
-               f'token={self.token}'
-
+               f'token={self.token},token_v2={self.token_v2},name={self.name},' \
+               f'rec_services={self.rec_services}'
 
 
 class BeelineAPI:
@@ -81,7 +85,7 @@ class BeelineAPI:
                             cookies=cookies,
                             headers=self.headers)
         if not r.ok:
-            raise InvalidResponse(f'{r.status_code}: {url} - {r.text}')
+            raise InvalidResponse(f'{r.status_code} (GET): {url}', r)
 
         response = json.loads(r.text)
         if response['meta']['status'] == 'ERROR' and \

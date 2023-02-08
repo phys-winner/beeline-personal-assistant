@@ -1,3 +1,4 @@
+import json
 import logging
 import locale
 from beeline_api_errors import *
@@ -7,8 +8,10 @@ from datetime import datetime, timedelta
 
 from account_menu import *
 from beeline_api import BeelineAPI, BeelineNumber, BeelineUser
+from beeline_api_v2 import BeelineAPIv2
 from config_secrets import *
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardMarkup, \
+    InlineKeyboardButton
 from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,7 +20,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     PicklePersistence,
-    filters,
+    filters, CallbackQueryHandler, CallbackContext,
 )
 
 logging.basicConfig(
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 locale.setlocale(locale.LC_ALL, 'rus')
 
 beelineAPI = BeelineAPI()
+beelineAPIv2 = BeelineAPIv2()
 use_white_list = len(white_list) > 0
 
 ADD_ACCOUNT, RENAME_ACCOUNT = range(2)
@@ -108,7 +112,7 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     response = call_func(context, beelineAPI.info_prepaidBalance)
     logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
 
-    index_number = context.user_data['beeline_user'].current_number
+    index_number = get_current_index(context)
     current_ctn = context.user_data['beeline_user'].numbers[index_number].ctn
     current_ctn = replace_demo_ctn(current_ctn)
 
@@ -317,7 +321,12 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if soc in test_services.keys():
             del test_services[soc]
 
+    buttons = []
+
     if len(test_services) > 0:
+        index_number = get_current_index(context)
+        context.user_data['beeline_user'].numbers[index_number].rec_services = test_services.copy()
+
         result += '💡 Советую подключить данные услуги:\n'
         for service in test_services.values():
             result += '⚬  ' + service['entityName']
@@ -326,6 +335,8 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             else:
                 result += f'\n📞 <code>{service["how_to"]}</code>'
             result += '\n\n'
+        buttons.append(InlineKeyboardButton(text='Подключить услуги',
+                                            callback_data='enable_rec_services'))
 
     # подписки - наличие
     response = call_func(context, beelineAPI.info_subscriptions)
@@ -337,7 +348,12 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         result += '❌️ Обнаружены подписки:\n'
         for subscription in subscriptions:
-            result += subscription['name'] + '\n'
+            if subscription['name']:
+                result += f'👎️ {subscription["name"]} (для отключения используйте <code>*110*20#</code>)\n'
+            else:
+                result += f'👎️ {subscription["name"]}\n'
+
+        result += '\n'
 
     # счётчики - наличие флага замедления
     response = call_func(context, beelineAPI.info_accumulators)
@@ -355,7 +371,8 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not is_slowed:
         result += '✅️ Замедленные счётчики не найдены!\n'
 
-    await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
+    await wait_msg.edit_text(result, parse_mode=ParseMode.HTML,
+                             reply_markup=InlineKeyboardMarkup([buttons]))
 
 
 async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -441,9 +458,42 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await wait_msg.edit_text(result, parse_mode=ParseMode.HTML)
 
 
+async def enable_rec_services(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if 'beeline_user' not in context.user_data:
+        await start(update, context)
+        return
+
+    text = f"Происходит подключение услуг:\n"
+    services = get_current_number(context).rec_services
+    for soc, service in services.items():
+        text += f'⌛ <b>{service["entityName"]}</b>…\n'
+        await query.edit_message_text(text=text,
+                                      reply_markup=InlineKeyboardMarkup([]),
+                                      parse_mode=ParseMode.HTML)
+        try:
+            response = call_func(context, beelineAPIv2.activate_service, soc)
+            logger.info("activate_service: %s: %s", query.from_user.first_name, response)
+            text += f'✅ <b>{response["meta"]["message"]}</b>\n\n'
+        except InvalidResponse as e:
+            response = json.loads(e.response.text)
+            logger.error("activate_service: %s: %s", query.from_user.first_name, response)
+            text += f'❌ <b>{response["meta"]["message"]}</b>\n\n'
+
+        await query.edit_message_text(text=text,
+                                      parse_mode=ParseMode.HTML)
+
+    text += '✅✅ Все рекомендованные услуги успешно подключены.'
+    await query.edit_message_text(text=text,
+                                  parse_mode=ParseMode.HTML)
+
+
 async def get_price_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
-        return await start(update, context)
+        await start(update, context)
+        return
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_pricePlan)
@@ -510,4 +560,6 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.Regex(SELECT_ACC_REGEXP), select_account))
 
     application.add_handler(MessageHandler(filters.Regex('🔙 В главное меню'), show_main_menu))
+    application.add_handler(CallbackQueryHandler(enable_rec_services, "^enable_rec_services$"))
+
     application.run_polling()
