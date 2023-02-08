@@ -1,21 +1,36 @@
 from datetime import datetime
-import re
-
 from telegram.ext import ContextTypes
-
 from beeline_api import BeelineNumber
 
+
+class ServiceDescription:
+    def __init__(self, soc, name, how_to):
+        self.soc = soc
+        self.name = name
+        self.how_to = how_to
+
+    def __eq__(self, soc: str):
+        return self.soc == soc
+
+    def __repr__(self) -> str:
+        return f'ServiceDescription: soc={self.soc},' \
+               f'name={self.name},how_to={self.how_to}'
+
+    def can_activate(self):
+        return not self.how_to.startswith('06')
+
+
 BAD_SERVICES = ['P2PTOR_NO', 'INFO300GB', 'SPEED_512', 'PRIOR3', 'SPDKCH']
-GOOD_SERVICES = {
-'USSD_BAN': {'entityName': 'Запрет USSD хвостов; отключение рекламы при USSD запросах, например, в *102#', 'how_to': '067405541'},
-'MBCSTOPE': {'entityName': 'Отказ от ММС-рассылок', 'how_to': '06740451'},
-'PSMSADOFF': {'entityName': 'Отказ от смс-рассылок', 'how_to': '067401231'},
-'NO_PROMO': {'entityName': 'Запрет промо акций', 'how_to': '06740431'},
-'AUTOSP_BL': {'entityName': 'Запрет автопродления интернета (необходимо отключить перед подключением Автопродления скорости)', 'how_to': '*115*230#'},
-'CRMINTBAR': {'entityName': 'Запрет интернета в сетях др. операторов РФ', 'how_to': '*110*9390#'},
-'ROAMBAR_P': {'entityName': 'Запрет автоматического международного роуминга', 'how_to': '*110*0991#'},
-'CPA_SAS': {'entityName': 'Отдельный лицевой счёт для оплаты услуг провайдеров (платные подписки не будут тратить денег)', 'how_to': 'https://beeline.ru/customers/products/mobile/services/cutdetails/CPA_SAS/'}
-}
+GOOD_SERVICES = [
+    ServiceDescription('USSD_BAN', 'Запрет USSD хвостов', '067405541'),
+    ServiceDescription('MBCSTOPE', 'Отказ от ММС-рассылок', '06740451'),
+    ServiceDescription('PSMSADOFF', 'Отказ от смс-рассылок', '067401231'),
+    ServiceDescription('NO_PROMO', 'Запрет промо акций', '06740431'),
+    ServiceDescription('AUTOSP_BL', 'Запрет автопродления интернета (необходимо отключить перед подключением Автопродления скорости)', '*115*230#'),
+    ServiceDescription('CRMINTBAR', 'Запрет интернета в сетях др. операторов РФ', '*110*9390#'),
+    ServiceDescription('ROAMBAR_P', 'Запрет автоматического международного роуминга', '*110*0991#'),
+    ServiceDescription('CPA_SAS', 'Отдельный лицевой счёт для оплаты услуг провайдеров (платные подписки не будут тратить денег)', 'https://beeline.ru/customers/products/mobile/services/cutdetails/CPA_SAS/')
+]
 
 PLEASE_WAIT_MSG = '⌛ Пожалуйста, подождите...'
 AUTH_MSG = 'Для авторизации отправьте \n' \

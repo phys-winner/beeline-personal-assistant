@@ -318,26 +318,31 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         result = '✅️ Вредных или платных услуг не обнаружено!\n'
 
     test_services = GOOD_SERVICES.copy()
-    for soc, description in services.items():
-        if soc in test_services.keys():
-            del test_services[soc]
+    for soc in services.keys():
+        for good_service in GOOD_SERVICES:
+            if soc == good_service:
+                test_services.remove(soc)
 
-    buttons = []
-
+    can_activate = 0
     if len(test_services) > 0:
         index_number = get_current_index(context)
         context.user_data['beeline_user'].numbers[index_number].rec_services = test_services.copy()
 
         result += '💡 Советую подключить данные услуги:\n'
-        for service in test_services.values():
-            result += '⚬  ' + service['entityName']
-            if 'http' in service['how_to']:
-                result += f'\n🌎 <a href="{service["how_to"]}">Страница услуги в билайне</a>'
+        for service in test_services:
+            result += '⚬  ' + service.name
+
+            if service.can_activate():
+                can_activate += 1
+                result += f'\n⚙️ Автоматически, либо '
             else:
-                result += f'\n📞 <code>{service["how_to"]}</code>'
+                result += '\n'
+
+            if 'http' in service.how_to:
+                result += f'🌎 <a href="{service.how_to}">Страница услуги в билайне</a>'
+            else:
+                result += f'📞 <code>{service.how_to}</code>'
             result += '\n\n'
-        buttons.append(InlineKeyboardButton(text='Подключить услуги',
-                                            callback_data='enable_rec_services'))
 
     # подписки - наличие
     response = call_func(context, beelineAPI.info_subscriptions)
@@ -371,6 +376,12 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if not is_slowed:
         result += '✅️ Замедленные счётчики не найдены!\n'
+
+    buttons = []
+    if can_activate > 0:
+        result += f'\nВы можете автоматически ⚙️ подключить {can_activate} услуг.\n'
+        buttons.append(InlineKeyboardButton(text='⚙️ Подключить услуги',
+                                            callback_data='enable_rec_services'))
 
     await wait_msg.edit_text(result, parse_mode=ParseMode.HTML,
                              reply_markup=InlineKeyboardMarkup([buttons]))
@@ -531,6 +542,7 @@ async def fix_user_data(persistence: PicklePersistence) -> None:
                 name=data['beeline_user'].numbers[i].name,
             )
         await persistence.update_user_data(user_id, data)
+    logger.info("user_data has been updated")
 
 
 if __name__ == '__main__':
