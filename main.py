@@ -40,6 +40,7 @@ ADD_ACCOUNT, RENAME_ACCOUNT = range(2)
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     number = get_current_number(context)
     number_str = replace_demo_ctn(number.ctn)
+    logger.info("%s: show_main_menu", update.message.from_user.first_name)
     await update.message.reply_text('Вы находитесь в главном меню.\n'
                                     f'Текущий аккаунт: {number.name} (+7{number_str})\n\n'
                                     'Выберите интересующий раздел:',
@@ -53,9 +54,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await show_main_menu(update, context)
         return ConversationHandler.END
     user = update.message.from_user
-    logger.info("start: %s: %s", user.first_name, update.message.text)
+    logger.info("%s: start", user.first_name)
     await update.message.reply_text(
         "Привет! Это неофициальный личный кабинет билайна с расширенными возможностями."
+        f"\n\nОбратите внимание: данный бот является неофициальным и не является официальным представителем компании Билайн. Использование бота выполняется на ваш страх и риск. Не рекомендуется передавать ваш номер телефона или пароль от личного кабинета Билайн незнакомым людям, так как это может нарушить вашу конфиденциальность и безопасность.",
         f"\n\n{AUTH_MSG}",
         parse_mode=ParseMode.HTML,
         reply_markup=ReplyKeyboardRemove()
@@ -75,7 +77,7 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 await account_menu(update, context)
                 return ConversationHandler.END
 
-    logger.info("login: %s", update.message.text)
+    logger.info("%s: authorize", update.message.from_user.first_name)
     try:
         token = beelineAPI.obtain_token(ctn, password)
     except InvalidResponse as e:
@@ -93,7 +95,7 @@ async def authorize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
         # именуем номера как тарифы
         response = call_func(context, beelineAPI.info_pricePlan)
-        logger.info("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
+        logger.debug("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
         plan = response['pricePlanInfo']
 
         context.user_data['beeline_user'].numbers[new_index].name = plan['entityName']
@@ -109,9 +111,10 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if 'beeline_user' not in context.user_data:
         return await start(update, context)
 
+    logger.info("%s: show_info", update.message.from_user.first_name)
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_prepaidBalance)
-    logger.info("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_prepaidBalance: %s: %s", update.message.from_user.first_name, response)
 
     index_number = get_current_index(context)
     current_ctn = context.user_data['beeline_user'].numbers[index_number].ctn
@@ -128,13 +131,13 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     result += '\n'
 
     response = call_func(context, beelineAPI.info_accumulators)
-    logger.info("info_accumulators: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_accumulators: %s: %s", update.message.from_user.first_name, response)
 
     # пропускаем 'Условия использования интернета в международном роуминге'
     accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
 
     response = call_func(context, beelineAPI.info_prepaidAddBalance)
-    logger.info("info_prepaidAddBalance: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_prepaidAddBalance: %s: %s", update.message.from_user.first_name, response)
 
     balances = []
     if 'balanceTime' in response and response['balanceTime'] is not None:
@@ -225,9 +228,10 @@ async def show_services(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await start(update, context)
         return
 
+    logger.info("%s: show_services", update.message.from_user.first_name)
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
-    logger.info("info_serviceList: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_serviceList: %s: %s", update.message.from_user.first_name, response)
 
     def sort_by_name(service):
         return service['entityName']
@@ -289,7 +293,8 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # услуги - наличие 'плохих' и платных, совет по подключению полезных
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_serviceList)
-    logger.info("info_serviceList: %s: %s", update.message.from_user.first_name, response)
+    logger.info("%s: check_number", update.message.from_user.first_name)
+    logger.debug("info_serviceList: %s: %s", update.message.from_user.first_name, response)
     result = ''
 
     services = {}
@@ -346,7 +351,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # подписки - наличие
     response = call_func(context, beelineAPI.info_subscriptions)
-    logger.info("info_subscriptions: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_subscriptions: %s: %s", update.message.from_user.first_name, response)
 
     subscriptions = response['subscriptions']
     if len(subscriptions) == 0:
@@ -363,7 +368,7 @@ async def check_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # счётчики - наличие флага замедления
     response = call_func(context, beelineAPI.info_accumulators)
-    logger.info("get_accumulators: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("get_accumulators: %s: %s", update.message.from_user.first_name, response)
 
     accumulators = [n for n in response['accumulators'] if n['soc'] != 'ROAMGPRS']
     is_slowed = False
@@ -392,12 +397,13 @@ async def get_bill_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return await start(update, context)
 
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
+    logger.info("%s: get_bill_detail", update.message.from_user.first_name)
 
     period_end = datetime.now()
     period_start = period_end - timedelta(hours=30*24)
 
     response = call_func(context, beelineAPI.info_onlineBillDetail, period_start, period_end)
-    logger.info("info_onlineBillDetail: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("info_onlineBillDetail: %s: %s", update.message.from_user.first_name, response)
 
     call_details = response['callDetails']
     today = period_end.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -474,20 +480,21 @@ async def enable_rec_services(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     await query.answer()
 
+    logger.info("%s: enable_rec_services", query.from_user.first_name)
     if 'beeline_user' not in context.user_data:
         await start(update, context)
         return
 
     text = f"Происходит подключение услуг:\n"
     services = get_current_number(context).rec_services
-    for soc, service in services.items():
-        text += f'⌛ <b>{service["entityName"]}</b>…\n'
+    for service in services:
+        text += f'⌛ <b>{service.name}</b>…\n'
         await query.edit_message_text(text=text,
                                       reply_markup=InlineKeyboardMarkup([]),
                                       parse_mode=ParseMode.HTML)
         try:
-            response = call_func(context, beelineAPIv2.activate_service, soc)
-            logger.info("activate_service: %s: %s", query.from_user.first_name, response)
+            response = call_func(context, beelineAPIv2.activate_service, service.soc)
+            logger.debug("activate_service: %s: %s", query.from_user.first_name, response)
             text += f'✅ <b>{response["meta"]["message"]}</b>\n\n'
         except InvalidResponse as e:
             response = json.loads(e.response.text)
@@ -507,9 +514,10 @@ async def get_price_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await start(update, context)
         return
 
+    logger.info("%s: get_price_plan", update.message.from_user.first_name)
     wait_msg = await update.message.reply_text(PLEASE_WAIT_MSG)
     response = call_func(context, beelineAPI.info_pricePlan)
-    logger.info("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
+    logger.debug("get_pricePlan: %s: %s", update.message.from_user.first_name, response)
 
     price_plan = response['pricePlanInfo']
     result = f"""Название: {price_plan['entityName']}
@@ -550,8 +558,8 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(tg_bot_token).persistence(persistence).build()
 
     # update pickle storage
-    #asyncio.get_event_loop().run_until_complete(fix_user_data(persistence))
-    #asyncio.get_event_loop().run_until_complete(application.update_persistence())
+    asyncio.get_event_loop().run_until_complete(fix_user_data(persistence))
+    asyncio.get_event_loop().run_until_complete(application.update_persistence())
 
     auth_handler = ConversationHandler(
         entry_points=[

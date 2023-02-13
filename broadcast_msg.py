@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 async def broadcast(bot):
     for user in white_list:
         logger.info("broadcast: " + str(user))
-        await bot.send_message(text='Привет! Добавлена поддержка мульти-аккаунтов, попробуйте!',
+        await bot.send_message(text='Привет! Добавлена возможность автоматически подключить некоторые полезные услуги!'
+                                    'Используйте кнопку "✅ Проверить номер", затем - "⚙️ Подключить услуги".',
                                reply_markup=main_menu_keyboard(),
                                parse_mode=ParseMode.HTML,
                                chat_id=user,
